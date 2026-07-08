@@ -52,7 +52,7 @@ func (m *monitorModel) reset() tea.Cmd {
 	if m.cancel != nil {
 		m.cancel()
 	}
-	cs := newCardState(m.theme)
+	cs := newCardState(m.theme, m.compact)
 	m.cardState = cs
 	m.startTime = time.Now()
 	m.dlPeak = 0
@@ -183,9 +183,10 @@ func (m *monitorModel) View() string {
 	var body strings.Builder
 
 	if m.serverName != "" {
+		inner := m.cardWidthFor() - 4 // border + padding
 		body.WriteString(center(lipgloss.NewStyle().
 			Foreground(m.theme.Muted).
-			Render(truncate("watching "+m.serverName, m.cardWidthFor()-4)), m.cardWidthFor()))
+			Render("watching "+m.serverName), inner))
 		body.WriteString("\n\n")
 	}
 
@@ -220,9 +221,16 @@ func (m *monitorModel) View() string {
 	body.WriteString(center(lipgloss.JoinHorizontal(lipgloss.Left, left, "    ", right), m.cardWidthFor()))
 
 	// Footer hint.
-	hint := lipgloss.NewStyle().
-		Foreground(m.theme.Muted).
-		Render("esc menu · c units (" + m.unit.label() + ") · p pause · r reset · ? help")
+	hl := lipgloss.NewStyle().Foreground(m.theme.Highlight).Bold(true)
+	mt := lipgloss.NewStyle().Foreground(m.theme.Muted)
+	hint := lipgloss.JoinHorizontal(lipgloss.Center,
+		hl.Render("esc"), mt.Render(" menu  ·  "),
+		hl.Render("c"), mt.Render(" units  ·  "),
+		hl.Render("p"), mt.Render(" pause  ·  "),
+		hl.Render("r"), mt.Render(" reset  ·  "),
+		hl.Render("t"), mt.Render(" compact  ·  "),
+		hl.Render("?"), mt.Render(" help"),
+	)
 	body.WriteString("\n\n")
 	body.WriteString(center(hint, m.cardWidthFor()))
 
@@ -233,7 +241,12 @@ func (m *monitorModel) View() string {
 		Width(m.cardWidthFor()).
 		Render(body.String())
 
-	header := renderHeader("Watching your connection in real time")
+	var header string
+	if m.compact {
+		header = renderCompactHeader("Watching your connection in real time")
+	} else {
+		header = renderHeader("Watching your connection in real time")
+	}
 	stack := lipgloss.JoinVertical(lipgloss.Center,
 		header,
 		"",
@@ -261,6 +274,7 @@ func (m *monitorModel) renderHelp() string {
 		key.Render("c") + "  " + muted.Render("cycle units (Mbps / KB/s / MB/s / GB/s)"),
 		key.Render("p") + "  " + muted.Render("pause / resume the monitor"),
 		key.Render("r") + "  " + muted.Render("restart the monitor"),
+		key.Render("t") + "  " + muted.Render("toggle compact mode (skip the large logo)"),
 	}
 
 	panel := lipgloss.NewStyle().

@@ -111,13 +111,14 @@ type cardState struct {
 	// Controls / display toggles.
 	showHelp bool
 	unit     unitMode
+	compact  bool
 
 	err error
 }
 
 // newCardState builds the shared state for one run: spinner, channels, context,
 // and the two history graphs.
-func newCardState(theme Theme) *cardState {
+func newCardState(theme Theme, compact bool) *cardState {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(theme.Highlight)
@@ -131,6 +132,7 @@ func newCardState(theme Theme) *cardState {
 
 	return &cardState{
 		theme:    theme,
+		compact:  compact,
 		progress: p,
 		ctx:      ctx,
 		cancel:   cancel,
@@ -579,4 +581,14 @@ func renderHeader(tagline string) string {
 		Render(tagline)
 
 	return lipgloss.JoinVertical(lipgloss.Center, logo, gradLine, tag)
+}
+
+// renderCompactHeader draws a minimal header: just the tagline text without the
+// large pixel-art logo. Used when --compact mode is active or toggled with 't'.
+func renderCompactHeader(tagline string) string {
+	tag := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#56d364")).
+		Bold(true).
+		Render(tagline)
+	return tag
 }

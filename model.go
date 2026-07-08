@@ -52,7 +52,7 @@ func (m *model) reset() tea.Cmd {
 	if m.cancel != nil {
 		m.cancel()
 	}
-	cs := newCardState(m.theme)
+	cs := newCardState(m.theme, m.compact)
 	m.cardState = cs
 	m.testStart = time.Now()
 	m.gotResult = false
@@ -222,9 +222,10 @@ func (m *model) View() string {
 	// A faint server/region line inside the card once known. The prominent
 	// SPEED header now lives above the card (see renderHeader).
 	if m.serverName != "" {
+		inner := m.cardWidthFor() - 4 // border + padding
 		body.WriteString(center(lipgloss.NewStyle().
 			Foreground(m.theme.Muted).
-			Render(truncate("connected to "+m.serverName, m.cardWidthFor()-4)), m.cardWidthFor()))
+			Render("connected to "+m.serverName), inner))
 		body.WriteString("\n\n")
 	}
 
@@ -248,9 +249,16 @@ func (m *model) View() string {
 	body.WriteString(m.summaryLine())
 
 	// Footer hint.
-	hint := lipgloss.NewStyle().
-		Foreground(m.theme.Muted).
-		Render("esc menu · q quit · r reset · c units (" + m.unit.label() + ") · ? help")
+	hl := lipgloss.NewStyle().Foreground(m.theme.Highlight).Bold(true)
+	mt := lipgloss.NewStyle().Foreground(m.theme.Muted)
+	hint := lipgloss.JoinHorizontal(lipgloss.Center,
+		hl.Render("esc"), mt.Render(" menu  ·  "),
+		hl.Render("q"), mt.Render(" quit  ·  "),
+		hl.Render("r"), mt.Render(" reset  ·  "),
+		hl.Render("c"), mt.Render(" units  ·  "),
+		hl.Render("t"), mt.Render(" compact  ·  "),
+		hl.Render("?"), mt.Render(" help"),
+	)
 	body.WriteString("\n\n")
 	body.WriteString(center(hint, m.cardWidthFor()))
 	card := lipgloss.NewStyle().
@@ -261,7 +269,12 @@ func (m *model) View() string {
 		Render(body.String())
 
 	// Header (SPEED + tagline) sits above the card.
-	header := renderHeader("Wonder how speedy your internet is?")
+	var header string
+	if m.compact {
+		header = renderCompactHeader("Wonder how speedy your internet is?")
+	} else {
+		header = renderHeader("Wonder how speedy your internet is?")
+	}
 	stack := lipgloss.JoinVertical(lipgloss.Center,
 		header,
 		"", // spacer
@@ -318,6 +331,7 @@ func (m *model) renderHelp() string {
 		key.Render("q") + "  " + muted.Render("quit"),
 		key.Render("r") + "  " + muted.Render("restart the test"),
 		key.Render("c") + "  " + muted.Render("cycle units (Mbps / KB/s / MB/s / GB/s)"),
+		key.Render("t") + "  " + muted.Render("toggle compact mode (skip the large logo)"),
 	}
 
 	panel := lipgloss.NewStyle().

@@ -10,22 +10,24 @@ import (
 // Start/Update/View and this router drives them, keeping a single point of
 // control for quit + back-to-menu navigation.
 type appModel struct {
-	theme Theme
+	theme  Theme
+	compact bool
 
 	width  int
 	height int
 
-	screen screenID
-	menu   *menuModel
-	test   *model
+	screen  screenID
+	menu    *menuModel
+	test    *model
 	monitor *monitorModel
 }
 
-func newAppModel(theme Theme) appModel {
+func newAppModel(theme Theme, compact bool) appModel {
 	return appModel{
-		theme:  theme,
-		screen: screenMenu,
-		menu:   newMenuModel(theme),
+		theme:   theme,
+		compact: compact,
+		screen:  screenMenu,
+		menu:    newMenuModel(theme, compact),
 	}
 }
 
@@ -48,14 +50,14 @@ func (a *appModel) enter(s screenID) tea.Cmd {
 
 	switch s {
 	case screenTest:
-		cs := newCardState(a.theme)
+		cs := newCardState(a.theme, a.compact)
 		a.test = newTestModel(cs)
 		a.test.width = a.width
 		a.test.height = a.height
 		a.screen = screenTest
 		return a.test.Start()
 	case screenMonitor:
-		cs := newCardState(a.theme)
+		cs := newCardState(a.theme, a.compact)
 		a.monitor = newMonitorModel(cs)
 		a.monitor.width = a.width
 		a.monitor.height = a.height
@@ -91,6 +93,20 @@ func (a *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.String() == "ctrl+c" {
 			a.quitAll()
 			return a, tea.Quit
+		}
+		// Toggle compact mode from anywhere.
+		if msg.String() == "t" {
+			a.compact = !a.compact
+			if a.menu != nil {
+				a.menu.compact = a.compact
+			}
+			if a.test != nil {
+				a.test.compact = a.compact
+			}
+			if a.monitor != nil {
+				a.monitor.compact = a.compact
+			}
+			return a, nil
 		}
 		// Global back-to-menu (except on the menu itself).
 		if a.screen != screenMenu && (msg.String() == "esc" || msg.String() == "m") {

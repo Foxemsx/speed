@@ -30,21 +30,23 @@ type menuItem struct {
 // Test / Bandwidth Monitor / Exit) that can be navigated with the keyboard or
 // the mouse, and emits a menuSelectMsg when the user picks one.
 type menuModel struct {
-	theme  Theme
-	width  int
-	height int
-	cursor int
+	theme   Theme
+	compact bool
+	width   int
+	height  int
+	cursor  int
 	spinner spinner.Model
-	items  []menuItem
+	items   []menuItem
 }
 
-func newMenuModel(theme Theme) *menuModel {
+func newMenuModel(theme Theme, compact bool) *menuModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(theme.Highlight)
 	return &menuModel{
-		theme:  theme,
-		cursor: 0,
+		theme:   theme,
+		compact: compact,
+		cursor:  0,
 		spinner: s,
 		items: []menuItem{
 			{title: "Speed Test", subtitle: "run a one-shot test", icon: "⚡", screen: screenTest},
@@ -163,7 +165,12 @@ func (m *menuModel) boxWidth(termW int) int {
 
 func (m *menuModel) boxHeight() int { return 5 }
 
-func (m *menuModel) headerHeight() int { return 14 } // RIPTIDE logo (11) + gradient line (1) + tagline (1) + margin
+func (m *menuModel) headerHeight() int {
+	if m.compact {
+		return 4 // tagline only + margin
+	}
+	return 14 // RIPTIDE logo (11) + gradient line (1) + tagline (1) + margin
+}
 
 func (m *menuModel) stackHeight(boxW int) int {
 	return m.headerHeight() + 1 + m.boxHeight()
@@ -177,11 +184,22 @@ func (m *menuModel) View() string {
 	}
 	row := lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
 
-	hint := lipgloss.NewStyle().
-		Foreground(m.theme.Muted).
-		Render("←/→ or j/k move  ·  enter select  ·  click a box  ·  q quit")
+	hl := lipgloss.NewStyle().Foreground(m.theme.Highlight).Bold(true)
+	mt := lipgloss.NewStyle().Foreground(m.theme.Muted)
+	hint := lipgloss.JoinHorizontal(lipgloss.Center,
+		hl.Render("←/→"), mt.Render(" or "),
+		hl.Render("j/k"), mt.Render(" move  ·  "),
+		hl.Render("enter"), mt.Render(" select  ·  "),
+		hl.Render("q"), mt.Render(" quit  ·  "),
+		hl.Render("t"), mt.Render(" compact"),
+	)
 
-	header := renderHeader("Choose how you'd like to measure your connection")
+	var header string
+	if m.compact {
+		header = renderCompactHeader("Choose how you'd like to measure your connection")
+	} else {
+		header = renderHeader("Choose how you'd like to measure your connection")
+	}
 	stack := lipgloss.JoinVertical(lipgloss.Center,
 		header,
 		"",
