@@ -258,7 +258,7 @@ func initialModel() model {
 	return model{
 		phase: "intro",
 		steps: []step{
-			{name: "Installing speed binary (go install)", args: []string{"go", "install", "github.com/Foxemsx/speed@latest"}},
+			{name: "Installing speed binary (go install)", args: []string{"go", "install", "github.com/Foxemsx/speed@main"}},
 			{name: "Verifying speed is on your PATH", args: []string{"sh", "-c", "command -v speed"}},
 		},
 	}
