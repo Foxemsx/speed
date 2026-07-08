@@ -56,6 +56,27 @@ go version   # should print go1.23 or later
 > command is reachable after install. On most setups the official Go
 > installer adds it for you.
 
+### Interactive installer (easiest)
+
+A single self-contained script with a friendly, beginner-friendly TUI. It
+detects whether you have Go, explains what it is (and downloads it locally to
+`~/.local/go` if you don't — **no sudo needed**), then installs `speed` with a
+polished progress screen and a completion summary. Works on **bash, zsh, and
+fish**.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Foxemsx/speed/main/install.sh | sh
+```
+
+After it finishes, just run:
+
+```sh
+speed
+```
+
+> **Note:** the installer runs on Linux/macOS. Windows users should use
+> Option 1 below (or `winget` if a package becomes available).
+
 ### Option 1 — `go install` (recommended)
 
 This compiles and installs the latest release into your Go bin directory in
@@ -76,8 +97,13 @@ speed
 If `speed` isn't found, add Go's bin directory to your `PATH`:
 
 ```sh
-# add to ~/.bashrc, ~/.zshrc, etc.
+# bash / zsh — add to ~/.bashrc or ~/.zshrc
 export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+```sh
+# fish — run once; fish_add_path persists it and de-duplicates
+fish_add_path (go env GOPATH)/bin
 ```
 
 **Windows (PowerShell)**
@@ -125,7 +151,10 @@ your `PATH` (for example `/usr/local/bin` on Linux).
 ### Arch Linux
 
 There is no Arch package in the repository yet — use **Option 1** or
-**Option 2** above.
+**Option 2** above. Note that `go install` places the binary in `~/go/bin`, and
+the Go installer does **not** add that to your shell's `PATH` automatically (this
+is especially easy to miss on the fish shell). Make sure `~/go/bin` is on your
+`PATH` as described in the previous section, then run `speed`.
 
 ---
 
