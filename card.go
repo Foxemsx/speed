@@ -416,23 +416,26 @@ func truncate(s string, w int) string {
 	return "…"
 }
 
-// renderHeader draws the prominent title: the word "SPEED" as large pixel
-// block-art with beveled 3D edges and a layered green gradient, plus the
-// provided tagline beneath it. Pure presentation, no model state.
+// renderHeader draws the prominent title: the word "RIPTIDE" as large pixel
+// block-art with a deep 3D extrusion, multi-layer shadows, edge highlights,
+// and a vibrant ocean gradient. Pure presentation, no model state.
 func renderHeader(tagline string) string {
-	// 5-wide x 6-tall pixel font for the letters we need (S P E E D).
+	// 7-wide x 9-tall pixel font for the letters we need (R I P T I D E).
 	// Source uses '#' as the "on" pixel; rendered as '█' below.
 	glyphs := map[rune][]string{
-		'S': {"#####", "#    ", "#    ", "#####", "    #", "#####"},
-		'P': {"#####", "#   #", "#   #", "#####", "#    ", "#    "},
-		'E': {"#####", "#    ", "#    ", "#### ", "#    ", "#####"},
-		'D': {"#####", "#   #", "#   #", "#   #", "#   #", "#####"},
+		'R': {" ####  ", "#    # ", "#    # ", "#    # ", "###### ", "#   ## ", "#    # "},
+		'I': {" ##### ", "   #   ", "   #   ", "   #   ", "   #   ", "   #   ", " ##### "},
+		'P': {"###### ", "#    # ", "#    # ", "###### ", "#      ", "#      ", "#      "},
+		'T': {"#######", "   #   ", "   #   ", "   #   ", "   #   ", "   #   ", "   #   "},
+		'D': {"###### ", "#     #", "#     #", "#     #", "#     #", "#     #", "###### "},
+		'E': {"#######", "#      ", "#      ", "#####  ", "#      ", "#      ", "#######"},
 	}
 
-	// Green gradient ramp: dark forest (left) -> neon mint (right).
+	// Vibrant ocean gradient: deep indigo -> teal -> electric cyan -> white-hot.
 	ramp := []lipgloss.Color{
-		"#0b3d1e", "#11502a", "#1a7f37", "#2ea043",
-		"#3fb950", "#56d364", "#7ee787", "#b9f6ca",
+		"#1a1a2e", "#16213e", "#0f3460", "#0e4d64",
+		"#088395", "#05bfdb", "#00e5ff", "#18ffff",
+		"#84ffff", "#b2ebf2", "#e0f7fa", "#ffffff",
 	}
 	rampAt := func(i int) lipgloss.Color {
 		if i < 0 {
@@ -445,15 +448,18 @@ func renderHeader(tagline string) string {
 	}
 
 	const (
-		glyphW = 5
-		glyphH = 6
+		glyphW = 7
+		glyphH = 7
 		gap    = 1 // space between letters
 		blk    = "█"
 	)
-	word := "SPEED"
+	word := "RIPTIDE"
 	wordW := len(word)*glyphW + (len(word)-1)*gap // total face columns
-	gridW := wordW + 1                            // +1 for the drop shadow offset
-	gridH := glyphH + 1                           // +1 for the drop shadow offset
+
+	// Extra space: 2-row deep shadow below, 1-row highlight above.
+	shadowRows := 3
+	gridW := wordW + 2 // +2 for shadow offset right
+	gridH := glyphH + shadowRows + 1 // +1 for top highlight row
 
 	// grid holds a pre-rendered (colored) cell; "" means empty.
 	grid := make([][]string, gridH)
@@ -461,20 +467,40 @@ func renderHeader(tagline string) string {
 		grid[r] = make([]string, gridW)
 	}
 
-	// Drop shadow layer (offset down-right by one cell).
-	shadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#04150b")).Render(blk)
+	// Deep shadow layer (offset down-right, 3 rows deep for 3D extrusion).
+	darkShadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#000507")).Render(blk)
+	midShadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#000d14")).Render(blk)
 	for li, r := range word {
 		rows := glyphs[r]
 		for gr := 0; gr < glyphH; gr++ {
 			for gc := 0; gc < glyphW; gc++ {
 				if rows[gr][gc] == '#' {
-					grid[gr+1][li*(glyphW+gap)+gc+1] = shadow
+					x := li*(glyphW+gap) + gc + 1
+					// Three layers of shadow for depth.
+					grid[gr+shadowRows][x+1] = darkShadow  // deepest
+					if gr+shadowRows-1 >= 0 {
+						grid[gr+shadowRows-1][x+1] = midShadow
+					}
 				}
 			}
 		}
 	}
 
-	// Face layer with beveled edges + per-column gradient.
+	// Top highlight line (1 row above face, bright rim).
+	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("#b2ebf2")).Render(blk)
+	for li, r := range word {
+		rows := glyphs[r]
+		for gc := 0; gc < glyphW; gc++ {
+			if rows[0][gc] == '#' { // only top row of each glyph
+				x := li*(glyphW+gap) + gc + 1
+				if 0 < gridH && grid[0][x] == "" {
+					grid[0][x] = highlight
+				}
+			}
+		}
+	}
+
+	// Face layer with beveled edges, per-column gradient, and specular highlights.
 	for li, r := range word {
 		rows := glyphs[r]
 		for gr := 0; gr < glyphH; gr++ {
@@ -484,7 +510,8 @@ func renderHeader(tagline string) string {
 				}
 				absCol := li*(glyphW+gap) + gc
 				baseIdx := (absCol * (len(ramp) - 1)) / wordW
-				// Bevel: highlight on top/left edges, shadow on bottom/right.
+
+				// Bevel detection: which neighbors are "on"?
 				up := gr > 0 && rows[gr-1][gc] == '#'
 				down := gr < glyphH-1 && rows[gr+1][gc] == '#'
 				left := gc > 0 && rows[gr][gc-1] == '#'
@@ -492,19 +519,34 @@ func renderHeader(tagline string) string {
 
 				var c lipgloss.Color
 				switch {
-				case !up || !left: // raised top-left edge -> brighter
-					c = rampAt(baseIdx + 2)
-				case !down || !right: // recessed bottom-right edge -> darker
+				case !up && !left:
+					// Outer top-left corner: brightest specular highlight.
+					c = rampAt(baseIdx + 4)
+				case !up || !left:
+					// Raised top/left edge: bright highlight.
+					c = rampAt(baseIdx + 3)
+				case !down && !right:
+					// Outer bottom-right corner: deepest face shadow.
+					c = rampAt(baseIdx - 3)
+				case !down || !right:
+					// Recessed bottom/right edge: darker.
 					c = rampAt(baseIdx - 2)
-				default: // inner face
+				case gr == 0:
+					// Top surface: slightly brighter.
+					c = rampAt(baseIdx + 1)
+				case gr == glyphH-1:
+					// Bottom surface: slightly darker.
+					c = rampAt(baseIdx - 1)
+				default:
+					// Inner face.
 					c = rampAt(baseIdx)
 				}
-				grid[gr][absCol] = lipgloss.NewStyle().Foreground(c).Render(blk)
+				grid[gr+1][absCol+1] = lipgloss.NewStyle().Foreground(c).Render(blk)
 			}
 		}
 	}
 
-	var rows []string
+	var outRows []string
 	for _, row := range grid {
 		var b strings.Builder
 		for _, cell := range row {
@@ -514,12 +556,27 @@ func renderHeader(tagline string) string {
 				b.WriteString(cell)
 			}
 		}
-		rows = append(rows, b.String())
+		outRows = append(outRows, b.String())
 	}
-	logo := lipgloss.JoinVertical(lipgloss.Left, rows...)
+	logo := lipgloss.JoinVertical(lipgloss.Left, outRows...)
+
+	// Decorative line under the logo.
+	lineW := wordW + 4
+	gradLine := ""
+	for i := 0; i < lineW; i++ {
+		idx := (i * (len(ramp) - 1)) / lineW
+		ch := "─"
+		if i == 0 || i == lineW-1 {
+			ch = "◆"
+		} else if i == lineW/2 {
+			ch = "◆"
+		}
+		gradLine += lipgloss.NewStyle().Foreground(rampAt(idx)).Render(ch)
+	}
+
 	tag := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#56d364")).
 		Render(tagline)
 
-	return lipgloss.JoinVertical(lipgloss.Center, logo, tag)
+	return lipgloss.JoinVertical(lipgloss.Center, logo, gradLine, tag)
 }

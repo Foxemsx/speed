@@ -1,4 +1,4 @@
-module github.com/Foxemsx/speed
+module github.com/Foxemsx/riptide
 
 go 1.23
 

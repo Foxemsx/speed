@@ -49,7 +49,7 @@ func newMenuModel(theme Theme) *menuModel {
 		items: []menuItem{
 			{title: "Speed Test", subtitle: "run a one-shot test", icon: "⚡", screen: screenTest},
 			{title: "Bandwidth", subtitle: "live monitor, DL + UL", icon: "📊", screen: screenMonitor},
-			{title: "Exit", subtitle: "quit speed", icon: "⏻", screen: screenExit},
+			{title: "Exit", subtitle: "quit riptide", icon: "⏻", screen: screenExit},
 		},
 	}
 }
@@ -163,7 +163,7 @@ func (m *menuModel) boxWidth(termW int) int {
 
 func (m *menuModel) boxHeight() int { return 5 }
 
-func (m *menuModel) headerHeight() int { return 9 } // SPEED logo (7) + tagline (1) + margin
+func (m *menuModel) headerHeight() int { return 14 } // RIPTIDE logo (11) + gradient line (1) + tagline (1) + margin
 
 func (m *menuModel) stackHeight(boxW int) int {
 	return m.headerHeight() + 1 + m.boxHeight()

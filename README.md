@@ -1,9 +1,9 @@
-# speed
+# riptide
 
 > A polished terminal tool for measuring — and watching — your internet
 > connection, written in Go.
 
-`speed` opens with a small **startup menu** so you can choose between two
+`riptide` opens with a small **startup menu** so you can choose between two
 modes:
 
 - **Speed Test** — a one-shot run that measures **download**, **upload**, and
@@ -32,7 +32,7 @@ gradient graphs.
 
 - **Main menu** — pick a mode: Speed Test, Bandwidth Monitor, or Exit.
   Navigate with the keyboard or click a box.
-- **Speed Test** — the centered card with the live `SPEED` header,
+- **Speed Test** — the centered card with the live `RIPTIDE` header,
   download/upload gradient graphs, and a spinner while servers are found.
 - **Finished** — the final summary with peak download/upload rates and ping.
 - **Bandwidth Monitor** — live download + upload of your real connection,
@@ -41,9 +41,9 @@ gradient graphs.
 - **Help menu** — press `?` in either mode to see the live controls.
 
 
-[![terminal internet tool](https://img.shields.io/badge/terminal-internet%20tool-39d0d8?style=flat-square)](https://github.com/Foxemsx/speed)
-[![Linux](https://img.shields.io/badge/Linux-supported-2ea44f?style=flat-square&logo=linux&logoColor=white)](https://github.com/Foxemsx/speed)
-[![Windows](https://img.shields.io/badge/Windows-supported-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/Foxemsx/speed)
+[![terminal internet tool](https://img.shields.io/badge/terminal-internet%20tool-39d0d8?style=flat-square)](https://github.com/Foxemsx/riptide)
+[![Linux](https://img.shields.io/badge/Linux-supported-2ea44f?style=flat-square&logo=linux&logoColor=white)](https://github.com/Foxemsx/riptide)
+[![Windows](https://img.shields.io/badge/Windows-supported-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/Foxemsx/riptide)
 Runs on Linux and Windows terminals. Any other OS supported by Go should work
 too.
 
@@ -83,7 +83,7 @@ too.
 
 ## Installation
 
-`speed` is distributed as a single static binary — no runtime dependencies.
+`riptide` is distributed as a single static binary — no runtime dependencies.
 
 ### Prerequisites
 
@@ -95,7 +95,7 @@ go version   # should print go1.23 or later
 ```
 
 > After installing Go, make sure `$GOPATH/bin` (usually `~/go/bin` on Linux,
-> `%USERPROFILE%\go\bin` on Windows) is on your `PATH`, so the `speed`
+> `%USERPROFILE%\go\bin` on Windows) is on your `PATH`, so the `riptide`
 > command is reachable after install. On most setups the official Go
 > installer adds it for you.
 
@@ -103,18 +103,18 @@ go version   # should print go1.23 or later
 
 A single self-contained script with a friendly, beginner-friendly TUI. It
 detects whether you have Go, explains what it is (and downloads it locally to
-`~/.local/go` if you don't — **no sudo needed**), then installs `speed` with a
+`~/.local/go` if you don't — **no sudo needed**), then installs `riptide` with a
 polished progress screen and a completion summary. Works on **bash, zsh, and
 fish**.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Foxemsx/speed/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/install.sh | sh
 ```
 
 After it finishes, just run:
 
 ```sh
-speed
+riptide
 ```
 
 > **Note:** the installer runs on Linux/macOS. Windows users should use
@@ -122,15 +122,15 @@ speed
 
 ### Interactive uninstaller
 
-The same beginner-friendly TUI, for removing `speed`. It removes **only the
-`speed` binary** (`~/go/bin/speed`) and leaves the Go toolchain and your `PATH`
+The same beginner-friendly TUI, for removing `riptide`. It removes **only the
+`riptide` binary** (`~/go/bin/riptide`) and leaves the Go toolchain and your `PATH`
 untouched. It asks for confirmation before doing anything.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Foxemsx/speed/main/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
 ```
 
-> **Note:** also Linux/macOS only. If `speed` is not found, it tells you and
+> **Note:** also Linux/macOS only. If `riptide` is not found, it tells you and
 > exits without removing anything.
 
 ### Option 1 — `go install` (recommended)
@@ -141,16 +141,16 @@ one step.
 **Linux / macOS**
 
 ```sh
-go install github.com/Foxemsx/speed@latest
+go install github.com/Foxemsx/riptide@latest
 ```
 
 Then run it from anywhere:
 
 ```sh
-speed
+riptide
 ```
 
-If `speed` isn't found, add Go's bin directory to your `PATH`:
+If `riptide` isn't found, add Go's bin directory to your `PATH`:
 
 ```sh
 # bash / zsh — add to ~/.bashrc or ~/.zshrc
@@ -165,10 +165,10 @@ fish_add_path (go env GOPATH)/bin
 **Windows (PowerShell)**
 
 ```powershell
-go install github.com/Foxemsx/speed@latest
+go install github.com/Foxemsx/riptide@latest
 ```
 
-Go installs the binary to `%USERPROFILE%\go\bin\speed.exe`. To run it from any
+Go installs the binary to `%USERPROFILE%\go\bin\riptide.exe`. To run it from any
 folder, add that directory to your `PATH`:
 
 ```powershell
@@ -180,7 +180,7 @@ $env:Path += ";$env:USERPROFILE\go\bin"
 Then:
 
 ```powershell
-speed
+riptide
 ```
 
 ### Option 2 — Build from source
@@ -189,16 +189,16 @@ Use this if you don't have `go install` set up, want a local tweak, or prefer
 to build manually.
 
 ```sh
-git clone https://github.com/Foxemsx/speed
-cd speed
-go build -o speed .      # on Windows: go build -o speed.exe .
+git clone https://github.com/Foxemsx/riptide
+cd riptide
+go build -o riptide .      # on Windows: go build -o riptide.exe .
 ```
 
 Run the binary from the folder you built it in:
 
 ```sh
-./speed        # Linux / macOS
-.\speed.exe    # Windows
+./riptide        # Linux / macOS
+.\riptide.exe    # Windows
 ```
 
 To make it available everywhere, copy the resulting binary into a folder on
@@ -210,17 +210,17 @@ There is no Arch package in the repository yet — use **Option 1** or
 **Option 2** above. Note that `go install` places the binary in `~/go/bin`, and
 the Go installer does **not** add that to your shell's `PATH` automatically (this
 is especially easy to miss on the fish shell). Make sure `~/go/bin` is on your
-`PATH` as described in the previous section, then run `speed`.
+`PATH` as described in the previous section, then run `riptide`.
 
 ---
 
 ## Usage
 
 ```sh
-speed   # opens the startup menu; pick Speed Test or Bandwidth Monitor
+riptide   # opens the startup menu; pick Speed Test or Bandwidth Monitor
 ```
 
-Launch `speed` with no arguments to open the **main menu**, then choose a
+Launch `riptide` with no arguments to open the **main menu**, then choose a
 mode. Each mode has its own live controls (see below). From anywhere,
 `esc` / `m` returns to the menu and `ctrl+c` quits.
 

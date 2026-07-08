@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# speed — interactive installer
+# riptide — interactive installer
 #
 # Self-contained bootstrap + Bubble Tea TUI. No prebuilt releases needed:
 #   1. bash detects (or downloads) the Go toolchain into ~/.local/go
@@ -8,7 +8,7 @@
 #      live spinner + log, then a completion summary card.
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Foxemsx/speed/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/install.sh | sh
 #   bash install.sh
 
 # Re-exec under bash if invoked under a different shell (curl | sh should be fine).
@@ -22,7 +22,7 @@ set -o pipefail
 # Setup
 # ---------------------------------------------------------------------------
 TMP="$(mktemp -d)"
-INSTDIR="$TMP/speed-installer"
+INSTDIR="$TMP/riptide-installer"
 LOGFILE="$TMP/install.log"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -110,8 +110,8 @@ install_go() {
 if [ -z "$GO_CMD" ]; then
   cat <<'MSG'
 
-  speed is written in Go. Go is a free, open-source programming language made
-  by Google. Installing it lets your computer build speed from its source —
+  riptide is written in Go. Go is a free, open-source programming language made
+  by Google. Installing it lets your computer build riptide from its source —
   it is safe, widely used, and only adds a small folder (~150 MB) to your home.
 
 MSG
@@ -167,7 +167,7 @@ PATH_ENTRIES="$HOME/.local/go/bin $HOME/go/bin"
 mkdir -p "$INSTDIR"
 
 cat > "$INSTDIR/go.mod" <<'GOMOD_EOF'
-module speedinstaller
+module riptideinstaller
 
 go 1.23
 
@@ -192,7 +192,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ---- styles (mirrors speed's dark dashboard palette) ----
+// ---- styles (mirrors riptide's dark dashboard palette) ----
 var (
 	bg        = lipgloss.Color("#0d1117")
 	fg        = lipgloss.AdaptiveColor{Light: "#1c2128", Dark: "#e6edf3"}
@@ -258,8 +258,8 @@ func initialModel() model {
 	return model{
 		phase: "intro",
 		steps: []step{
-			{name: "Installing speed binary (go install)", args: []string{"go", "install", "github.com/Foxemsx/speed@main"}},
-			{name: "Verifying speed is on your PATH", args: []string{"sh", "-c", "command -v speed"}},
+			{name: "Installing riptide binary (go install)", args: []string{"go", "install", "github.com/Foxemsx/riptide@main"}},
+			{name: "Verifying riptide is on your PATH", args: []string{"sh", "-c", "command -v riptide"}},
 		},
 	}
 }
@@ -365,11 +365,11 @@ func tail(s string, n int) string {
 }
 
 func (m model) introView() string {
-	osv := os.Getenv("SPEED_INSTALL_OS")
-	arch := os.Getenv("SPEED_INSTALL_ARCH")
-	gover := os.Getenv("SPEED_INSTALL_GO_VERSION")
-	goaction := os.Getenv("SPEED_INSTALL_GO_ACTION")
-	shell := os.Getenv("SPEED_INSTALL_SHELL")
+	osv := os.Getenv("RIPTIDE_INSTALL_OS")
+	arch := os.Getenv("RIPTIDE_INSTALL_ARCH")
+	gover := os.Getenv("RIPTIDE_INSTALL_GO_VERSION")
+	goaction := os.Getenv("RIPTIDE_INSTALL_GO_ACTION")
+	shell := os.Getenv("RIPTIDE_INSTALL_SHELL")
 
 	goLine := gover
 	if goaction == "installed" {
@@ -379,7 +379,7 @@ func (m model) introView() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("⚡  speed installer"))
+	b.WriteString(titleStyle.Render("⚡  riptide installer"))
 	b.WriteString("\n")
 	b.WriteString(labelStyle.Render("System:    "))
 	b.WriteString(valueStyle.Render(fmt.Sprintf("%s/%s", osv, arch)))
@@ -402,7 +402,7 @@ func (m model) introView() string {
 
 func (m model) runningView() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Installing speed"))
+	b.WriteString(titleStyle.Render("Installing riptide"))
 	b.WriteString("\n")
 	for i := range m.steps {
 		b.WriteString(m.stepLine(i))
@@ -418,11 +418,11 @@ func (m model) runningView() string {
 }
 
 func (m model) doneView() string {
-	osv := os.Getenv("SPEED_INSTALL_OS")
-	arch := os.Getenv("SPEED_INSTALL_ARCH")
-	gover := os.Getenv("SPEED_INSTALL_GO_VERSION")
-	goaction := os.Getenv("SPEED_INSTALL_GO_ACTION")
-	pathent := os.Getenv("SPEED_INSTALL_PATH_ENTRIES")
+	osv := os.Getenv("RIPTIDE_INSTALL_OS")
+	arch := os.Getenv("RIPTIDE_INSTALL_ARCH")
+	gover := os.Getenv("RIPTIDE_INSTALL_GO_VERSION")
+	goaction := os.Getenv("RIPTIDE_INSTALL_GO_ACTION")
+	pathent := os.Getenv("RIPTIDE_INSTALL_PATH_ENTRIES")
 
 	goLine := gover
 	if goaction == "installed" {
@@ -440,15 +440,15 @@ func (m model) doneView() string {
 	b.WriteString(labelStyle.Render("Go:            "))
 	b.WriteString(valueStyle.Render(goLine))
 	b.WriteString("\n")
-	b.WriteString(labelStyle.Render("speed binary:  "))
-	b.WriteString(valueStyle.Render("~/go/bin/speed"))
+	b.WriteString(labelStyle.Render("riptide binary:  "))
+	b.WriteString(valueStyle.Render("~/go/bin/riptide"))
 	b.WriteString("\n")
 	b.WriteString(labelStyle.Render("Added to PATH: "))
 	b.WriteString(valueStyle.Render(pathent))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("Run it now:  speed"))
+	b.WriteString(hintStyle.Render("Run it now:  riptide"))
 	b.WriteString("\n")
-	b.WriteString(hintStyle.Render("Custom bg:   speed --bg #0d1117"))
+	b.WriteString(hintStyle.Render("Custom bg:   riptide --bg #0d1117"))
 	b.WriteString("\n")
 	b.WriteString(hintStyle.Render("Press Enter or q to finish"))
 	return cardStyle.Render(b.String())
@@ -512,20 +512,20 @@ fi
 # ---------------------------------------------------------------------------
 # Hand off to the TUI
 # ---------------------------------------------------------------------------
-export SPEED_INSTALL_OS="$OS_LC"
-export SPEED_INSTALL_ARCH="$ARCH"
-export SPEED_INSTALL_GO_VERSION="$GO_VER"
-export SPEED_INSTALL_GO_ACTION="$GO_ACTION"
-export SPEED_INSTALL_PATH_ENTRIES="$PATH_ENTRIES"
-export SPEED_INSTALL_SHELL="$SHELL_NAME"
+export RIPTIDE_INSTALL_OS="$OS_LC"
+export RIPTIDE_INSTALL_ARCH="$ARCH"
+export RIPTIDE_INSTALL_GO_VERSION="$GO_VER"
+export RIPTIDE_INSTALL_GO_ACTION="$GO_ACTION"
+export RIPTIDE_INSTALL_PATH_ENTRIES="$PATH_ENTRIES"
+export RIPTIDE_INSTALL_SHELL="$SHELL_NAME"
 
 "$INSTDIR/ui"
 rc=$?
 
 if [ "$rc" -eq 0 ]; then
   echo ""
-  echo "✓ speed installed! Start it with:  speed"
-  echo "  (custom background:  speed --bg #0d1117)"
+  echo "✓ riptide installed! Start it with:  riptide"
+  echo "  (custom background:  riptide --bg #0d1117)"
 else
   echo "" >&2
   echo "The installer finished with an error. Re-run: bash install.sh" >&2

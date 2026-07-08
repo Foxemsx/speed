@@ -13,9 +13,9 @@ func main() {
 		themeFlag = flag.String("theme", "default", "color theme: default")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage of speed:\n\n")
+		fmt.Fprintf(os.Stderr, "Usage of riptide:\n\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n  speed\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n  riptide\n")
 	}
 	flag.Parse()
 
@@ -26,7 +26,7 @@ func main() {
 	p := tea.NewProgram(&m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "speed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "riptide: %v\n", err)
 		os.Exit(1)
 	}
 }

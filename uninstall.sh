@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# speed — interactive uninstaller
+# riptide — interactive uninstaller
 #
-# Self-contained bootstrap + Bubble Tea TUI. Removes the `speed` binary
+# Self-contained bootstrap + Bubble Tea TUI. Removes the `riptide` binary
 # (and only that — the Go toolchain and your PATH are left untouched).
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Foxemsx/speed/main/uninstall.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
 #   bash uninstall.sh
 
 # Re-exec under bash if invoked under a different shell (curl | sh should be fine).
@@ -16,22 +16,22 @@ fi
 set -o pipefail
 
 TMP="$(mktemp -d)"
-INSTDIR="$TMP/speed-uninstaller"
+INSTDIR="$TMP/riptide-uninstaller"
 LOGFILE="$TMP/uninstall.log"
 trap 'rm -rf "$TMP"' EXIT
 
-SPEED_BIN=""
-if command -v speed >/dev/null 2>&1; then
-  SPEED_BIN="$(command -v speed)"
-elif [ -x "$HOME/go/bin/speed" ]; then
-  SPEED_BIN="$HOME/go/bin/speed"
+RIPTIDE_BIN=""
+if command -v riptide >/dev/null 2>&1; then
+  RIPTIDE_BIN="$(command -v riptide)"
+elif [ -x "$HOME/go/bin/riptide" ]; then
+  RIPTIDE_BIN="$HOME/go/bin/riptide"
 fi
 
-# Preflight: if speed isn't installed, there's nothing to do.
-if [ -z "$SPEED_BIN" ]; then
+# Preflight: if riptide isn't installed, there's nothing to do.
+if [ -z "$RIPTIDE_BIN" ]; then
   cat <<'MSG'
 
-  speed was not found on your system (no `speed` on PATH or in ~/go/bin).
+  riptide was not found on your system (no `riptide` on PATH or in ~/go/bin).
 
   Nothing to uninstall. If you built it manually somewhere else, just delete
   that binary yourself.
@@ -53,9 +53,9 @@ if [ -z "$GO_CMD" ]; then
   cat <<'MSG'
 
   This uninstaller needs the Go toolchain to build its interface. Install Go
-  (https://go.dev/dl) or run this instead to remove speed directly:
+  (https://go.dev/dl) or run this instead to remove riptide directly:
 
-      rm -f "$(command -v speed || echo "$HOME/go/bin/speed")"
+      rm -f "$(command -v riptide || echo "$HOME/go/bin/riptide")"
 
 MSG
   exit 1
@@ -72,7 +72,7 @@ SHELL_NAME="$(basename "${SHELL:-/bin/bash}")"
 mkdir -p "$INSTDIR"
 
 cat > "$INSTDIR/go.mod" <<'GOMOD_EOF'
-module speeduninstaller
+module riptideuninstaller
 
 go 1.23
 
@@ -162,7 +162,7 @@ func initialModel() model {
 	return model{
 		phase: "confirm",
 		steps: []step{
-			{name: "Removing the speed binary", args: []string{"rm", "-f", os.Getenv("SPEED_UNINSTALL_TARGET")}},
+			{name: "Removing the riptide binary", args: []string{"rm", "-f", os.Getenv("RIPTIDE_UNINSTALL_TARGET")}},
 		},
 	}
 }
@@ -277,16 +277,16 @@ func tail(s string, n int) string {
 }
 
 func (m model) confirmView() string {
-	target := os.Getenv("SPEED_UNINSTALL_TARGET")
+	target := os.Getenv("RIPTIDE_UNINSTALL_TARGET")
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("⚡  uninstall speed"))
+	b.WriteString(titleStyle.Render("⚡  uninstall riptide"))
 	b.WriteString("\n\n")
 	b.WriteString(labelStyle.Render("This will remove:"))
 	b.WriteString("\n\n")
 	b.WriteString("  • ")
 	b.WriteString(valueStyle.Render(target))
 	b.WriteString("  ")
-	b.WriteString(labelStyle.Render("(the speed binary)"))
+	b.WriteString(labelStyle.Render("(the riptide binary)"))
 	b.WriteString("\n\n")
 	b.WriteString(labelStyle.Render("It will NOT touch Go or your PATH."))
 	b.WriteString("\n\n")
@@ -296,7 +296,7 @@ func (m model) confirmView() string {
 
 func (m model) runningView() string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("Uninstalling speed"))
+	b.WriteString(titleStyle.Render("Uninstalling riptide"))
 	b.WriteString("\n")
 	for i := range m.steps {
 		b.WriteString(m.stepLine(i))
@@ -312,9 +312,9 @@ func (m model) runningView() string {
 }
 
 func (m model) doneView() string {
-	target := os.Getenv("SPEED_UNINSTALL_TARGET")
+	target := os.Getenv("RIPTIDE_UNINSTALL_TARGET")
 	var b strings.Builder
-	b.WriteString(doneStyle.Render("✓  speed removed"))
+	b.WriteString(doneStyle.Render("✓  riptide removed"))
 	b.WriteString("\n\n")
 	b.WriteString(labelStyle.Render("Removed:  "))
 	b.WriteString(valueStyle.Render(target))
@@ -327,11 +327,11 @@ func (m model) doneView() string {
 
 func (m model) failedView() string {
 	var b strings.Builder
-	b.WriteString(errStyle.Render("✗  Could not remove speed"))
+	b.WriteString(errStyle.Render("✗  Could not remove riptide"))
 	b.WriteString("\n\n")
 	b.WriteString(logStyle.Render(tail(m.failOut, 6)))
 	b.WriteString("\n\n")
-	b.WriteString(hintStyle.Render("You can delete it manually:  rm -f " + os.Getenv("SPEED_UNINSTALL_TARGET")))
+	b.WriteString(hintStyle.Render("You can delete it manually:  rm -f " + os.Getenv("RIPTIDE_UNINSTALL_TARGET")))
 	b.WriteString("\n")
 	b.WriteString(hintStyle.Render("Press Enter or q to exit"))
 	return cardStyle.Render(b.String())
@@ -339,7 +339,7 @@ func (m model) failedView() string {
 
 func (m model) abortedView() string {
 	var b strings.Builder
-	b.WriteString(labelStyle.Render("Uninstall cancelled — speed is still installed."))
+	b.WriteString(labelStyle.Render("Uninstall cancelled — riptide is still installed."))
 	b.WriteString("\n\n")
 	b.WriteString(hintStyle.Render("Press Enter or q to exit"))
 	return cardStyle.Render(b.String())
@@ -393,14 +393,14 @@ fi
 # ---------------------------------------------------------------------------
 # Hand off to the TUI
 # ---------------------------------------------------------------------------
-export SPEED_UNINSTALL_TARGET="$SPEED_BIN"
+export RIPTIDE_UNINSTALL_TARGET="$RIPTIDE_BIN"
 
 "$INSTDIR/ui"
 rc=$?
 
 if [ "$rc" -eq 0 ]; then
   echo ""
-  echo "✓ Done. speed has been removed (Go and PATH left unchanged)."
+  echo "✓ Done. riptide has been removed (Go and PATH left unchanged)."
 else
   echo "" >&2
   echo "The uninstaller finished with an error. Re-run: bash uninstall.sh" >&2
