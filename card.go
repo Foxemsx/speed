@@ -51,7 +51,7 @@ const (
 	animFactor     = 0.18 // higher = snappier, lower = smoother
 	cardWidth      = 64
 	cardInnerWidth = cardWidth - 4 // account for border + padding
-	graphHeight    = 8
+	graphHeight    = 9
 )
 
 // unitMode selects how the measured speed is displayed.
@@ -153,12 +153,21 @@ func bridgeLaunch(ctx context.Context, p *Progress, events chan tea.Msg, run fun
 }
 
 // runBridge fans the background runner's channels into the tea event stream.
-// It exits (and closes events) once the context is cancelled.
+// On context cancel it still waits briefly for a final Result so the summary
+// is not lost when the user aborts mid-phase.
 func runBridge(ctx context.Context, p *Progress, events chan tea.Msg) {
+	defer close(events)
 	for {
 		select {
 		case <-ctx.Done():
-			close(events)
+			// Drain a late Result if the engine is about to emit one.
+			select {
+			case r, ok := <-p.Result:
+				if ok {
+					events <- resultMsg{r}
+				}
+			case <-time.After(800 * time.Millisecond):
+			}
 			return
 		case ph, ok := <-p.Phases:
 			if !ok {
@@ -175,7 +184,6 @@ func runBridge(ctx context.Context, p *Progress, events chan tea.Msg) {
 				return
 			}
 			events <- resultMsg{r}
-			close(events)
 			return
 		}
 	}
@@ -220,13 +228,35 @@ func (c *cardState) innerWidth(total int) int {
 func (c *cardState) cardWidthFor() int {
 	w := cardWidth
 	maxW := c.width - 2
-	if w > maxW {
+	if c.width > 0 && w > maxW {
 		w = maxW
 	}
 	if w < 30 {
 		w = 30
 	}
 	return w
+}
+
+// syncLayout sizes the history graphs to the card's content width.
+// metricBlock draws a 1-column accent rail beside the plot, so the plot itself
+// is contentWidth-1. Must be called on enter and on every terminal resize —
+// WindowSizeMsg is handled by the app router and does not reach sub-models.
+func (c *cardState) syncLayout() {
+	// Inner content area inside border + padding.
+	content := c.cardWidthFor() - 4
+	if content < 12 {
+		content = 12
+	}
+	plotW := content - 1 // leave room for the ▌ rail
+	if plotW < 10 {
+		plotW = 10
+	}
+	if c.dlGraph != nil {
+		c.dlGraph.setWidth(plotW)
+	}
+	if c.ulGraph != nil {
+		c.ulGraph.setWidth(plotW)
+	}
 }
 
 // --- Formatting ----------------------------------------------------------
@@ -295,28 +325,29 @@ func (c *cardState) statusLine() string {
 			return center(lipgloss.NewStyle().Foreground(c.theme.Upload).Render("✕ finished with errors"), c.cardWidthFor())
 		}
 		return center(lipgloss.NewStyle().Foreground(c.theme.Highlight).Render("✓ complete"), c.cardWidthFor())
+	default:
+		return ""
 	}
 
-	// Compute elapsed / progress for the timed phases.
+	// Timed phases get a live countdown + progress bar.
 	elapsed := time.Since(c.phaseStart)
-	if elapsed < 0 {
-		elapsed = 0
-	}
 	total := c.phaseDur
 	if total <= 0 {
 		total = defaultDuration
 	}
-	frac := float64(elapsed) / float64(total)
+	frac := elapsed.Seconds() / total.Seconds()
+	if frac < 0 {
+		frac = 0
+	}
 	if frac > 1 {
 		frac = 1
 	}
-	secs := int(elapsed.Seconds())
-	if secs > int(total.Seconds()) {
-		secs = int(total.Seconds())
+	remain := total - elapsed
+	if remain < 0 {
+		remain = 0
 	}
-
-	labelStyled := lipgloss.NewStyle().Foreground(color).Bold(true).Render(label)
-	timer := lipgloss.NewStyle().Foreground(c.theme.Muted).Render(fmt.Sprintf("%ds / %ds", secs, int(total.Seconds())))
+	labelStyled := lipgloss.NewStyle().Foreground(color).Render(label)
+	timer := lipgloss.NewStyle().Foreground(c.theme.Muted).Render(fmt.Sprintf("%4.1fs", remain.Seconds()))
 	bar := c.progressBar(frac, color, 16)
 	line := lipgloss.JoinHorizontal(lipgloss.Left, labelStyled, "   ", timer, "   ", bar)
 	return center(line, c.cardWidthFor())
@@ -337,14 +368,15 @@ func (c *cardState) progressBar(frac float64, color lipgloss.AdaptiveColor, widt
 }
 
 // metricBlock renders one download or upload metric: a label + big number +
-// unit on the first line, a vertical gradient graph beneath it, and a faint
-// peak line + axis rule under the graph. Everything is left-aligned so the
-// chart sits directly under its headline.
+// unit on the first line, a framed high-res graph beneath it, and peak info
+// under the axis. Left-aligned so the chart sits under its headline.
 func (c *cardState) metricBlock(label string, color lipgloss.AdaptiveColor, value float64, g *graph, peak float64, ph Phase) string {
 	numStr, unit := c.formatValue(value)
 	labelStyle := lipgloss.NewStyle().Foreground(color).Bold(true)
 	numStyle := lipgloss.NewStyle().Foreground(color).Bold(true).Width(7).Align(lipgloss.Right)
 	unitStyle := lipgloss.NewStyle().Foreground(c.theme.Muted).Width(5)
+	muted := lipgloss.NewStyle().Foreground(c.theme.Muted)
+	border := lipgloss.NewStyle().Foreground(c.theme.Border)
 
 	// Dim the metric if its phase hasn't started yet.
 	if c.phase < ph && c.phase != PhaseDone {
@@ -352,31 +384,41 @@ func (c *cardState) metricBlock(label string, color lipgloss.AdaptiveColor, valu
 		numStyle = numStyle.Faint(true)
 	}
 
-	head := lipgloss.JoinHorizontal(lipgloss.Left,
+	// Live value on the left; peak scale on the right when known.
+	// Chart frame is rail (1) + plot (g.width).
+	chartW := g.width + 1
+	headLeft := lipgloss.JoinHorizontal(lipgloss.Left,
 		labelStyle.Render(label),
 		"  ",
 		numStyle.Render(numStr),
 		" ",
 		unitStyle.Render(unit),
 	)
+	head := headLeft
+	if peak > 0 {
+		peakHead := muted.Render("peak " + c.formatPeak(peak))
+		pad := chartW - lipgloss.Width(headLeft) - lipgloss.Width(peakHead)
+		if pad < 1 {
+			pad = 1
+		}
+		head = headLeft + strings.Repeat(" ", pad) + peakHead
+	}
 
-	// Graph + axis rule + peak, only when the timed phase has been reached.
 	graphView := g.View()
 	if graphView == "" {
-		// Before any data: show an empty axis so the layout is stable.
 		graphView = strings.Repeat(" ", g.width)
 	}
-	axis := lipgloss.NewStyle().Foreground(c.theme.Border).Render(strings.Repeat("─", g.width))
-	peakStr := ""
-	if peak > 0 {
-		peakStr = lipgloss.NewStyle().Foreground(c.theme.Muted).Render("peak " + c.formatPeak(peak))
-	}
-	below := graphView + "\n" + axis
-	if peakStr != "" {
-		below += "\n" + peakStr
-	}
 
-	return head + "\n" + below
+	// Left rail in the metric accent — frames the chart like a dashboard panel.
+	rail := lipgloss.NewStyle().Foreground(color).Render("▌")
+	corner := lipgloss.NewStyle().Foreground(color).Render("└")
+	framed := make([]string, 0, g.height+1)
+	for _, line := range strings.Split(graphView, "\n") {
+		framed = append(framed, rail+line)
+	}
+	framed = append(framed, corner+border.Render(strings.Repeat("─", g.width)))
+
+	return head + "\n" + strings.Join(framed, "\n")
 }
 
 // center centers a string within width w (single-line).
@@ -418,169 +460,71 @@ func truncate(s string, w int) string {
 	return "…"
 }
 
-// renderHeader draws the prominent title: the word "RIPTIDE" as large pixel
-// block-art with a deep 3D extrusion, multi-layer shadows, edge highlights,
-// and a vibrant ocean gradient. Pure presentation, no model state.
+// logoSrc is "RIPTIDE" in FIGlet ANSI Shadow — same technique as flow's logo
+// (https://github.com/programmersd21/flow). The 3D/outline look is baked into
+// the box-drawing characters; we only color each row with a vertical gradient.
+var logoSrc = []string{
+	"██████╗ ██╗██████╗ ████████╗██╗██████╗ ███████╗",
+	"██╔══██╗██║██╔══██╗╚══██╔══╝██║██╔══██╗██╔════╝",
+	"██████╔╝██║██████╔╝   ██║   ██║██║  ██║█████╗  ",
+	"██╔══██╗██║██╔═══╝    ██║   ██║██║  ██║██╔══╝  ",
+	"██║  ██║██║██║        ██║   ██║██████╔╝███████╗",
+	"╚═╝  ╚═╝╚═╝╚═╝        ╚═╝   ╚═╝╚═════╝ ╚══════╝",
+}
+
+// logoStops is a 4-stop vertical water gradient (deep ocean → teal → cyan → ice).
+var logoStops = [4][3]uint8{
+	{0x0e, 0x4d, 0x64}, // deep ocean
+	{0x08, 0x83, 0x95}, // teal
+	{0x14, 0xc4, 0xd4}, // bright cyan
+	{0x9a, 0xf5, 0xf8}, // ice / foam
+}
+
+// renderHeader draws the RIPTIDE wordmark the same way flow draws FLOW:
+// pre-baked ANSI Shadow art + per-row 4-stop gradient + muted tagline.
 func renderHeader(tagline string) string {
-	// 7-wide x 9-tall pixel font for the letters we need (R I P T I D E).
-	// Source uses '#' as the "on" pixel; rendered as '█' below.
-	glyphs := map[rune][]string{
-		'R': {" ####  ", "#    # ", "#    # ", "#    # ", "###### ", "#   ## ", "#    # "},
-		'I': {" ##### ", "   #   ", "   #   ", "   #   ", "   #   ", "   #   ", " ##### "},
-		'P': {"###### ", "#    # ", "#    # ", "###### ", "#      ", "#      ", "#      "},
-		'T': {"#######", "   #   ", "   #   ", "   #   ", "   #   ", "   #   ", "   #   "},
-		'D': {"###### ", "#     #", "#     #", "#     #", "#     #", "#     #", "###### "},
-		'E': {"#######", "#      ", "#      ", "#####  ", "#      ", "#      ", "#######"},
-	}
-
-	// Vibrant ocean gradient: deep indigo -> teal -> electric cyan -> white-hot.
-	ramp := []lipgloss.Color{
-		"#1a1a2e", "#16213e", "#0f3460", "#0e4d64",
-		"#088395", "#05bfdb", "#00e5ff", "#18ffff",
-		"#84ffff", "#b2ebf2", "#e0f7fa", "#ffffff",
-	}
-	rampAt := func(i int) lipgloss.Color {
-		if i < 0 {
-			i = 0
+	n := len(logoSrc)
+	lines := make([]string, n)
+	for i, line := range logoSrc {
+		rowT := 0.0
+		if n > 1 {
+			rowT = float64(i) / float64(n-1)
 		}
-		if i >= len(ramp) {
-			i = len(ramp) - 1
-		}
-		return ramp[i]
+		r, g, b := logoGradient(rowT)
+		color := lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r, g, b))
+		lines[i] = lipgloss.NewStyle().Foreground(color).Bold(true).Render(line)
 	}
-
-	const (
-		glyphW = 7
-		glyphH = 7
-		gap    = 1 // space between letters
-		blk    = "█"
-	)
-	word := "RIPTIDE"
-	wordW := len(word)*glyphW + (len(word)-1)*gap // total face columns
-
-	// Extra space: 2-row deep shadow below, 1-row highlight above.
-	shadowRows := 3
-	gridW := wordW + 2 // +2 for shadow offset right
-	gridH := glyphH + shadowRows + 1 // +1 for top highlight row
-
-	// grid holds a pre-rendered (colored) cell; "" means empty.
-	grid := make([][]string, gridH)
-	for r := range grid {
-		grid[r] = make([]string, gridW)
-	}
-
-	// Deep shadow layer (offset down-right, 3 rows deep for 3D extrusion).
-	darkShadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#000507")).Render(blk)
-	midShadow := lipgloss.NewStyle().Foreground(lipgloss.Color("#000d14")).Render(blk)
-	for li, r := range word {
-		rows := glyphs[r]
-		for gr := 0; gr < glyphH; gr++ {
-			for gc := 0; gc < glyphW; gc++ {
-				if rows[gr][gc] == '#' {
-					x := li*(glyphW+gap) + gc + 1
-					// Three layers of shadow for depth.
-					grid[gr+shadowRows][x+1] = darkShadow  // deepest
-					if gr+shadowRows-1 >= 0 {
-						grid[gr+shadowRows-1][x+1] = midShadow
-					}
-				}
-			}
-		}
-	}
-
-	// Top highlight line (1 row above face, bright rim).
-	highlight := lipgloss.NewStyle().Foreground(lipgloss.Color("#b2ebf2")).Render(blk)
-	for li, r := range word {
-		rows := glyphs[r]
-		for gc := 0; gc < glyphW; gc++ {
-			if rows[0][gc] == '#' { // only top row of each glyph
-				x := li*(glyphW+gap) + gc + 1
-				if 0 < gridH && grid[0][x] == "" {
-					grid[0][x] = highlight
-				}
-			}
-		}
-	}
-
-	// Face layer with beveled edges, per-column gradient, and specular highlights.
-	for li, r := range word {
-		rows := glyphs[r]
-		for gr := 0; gr < glyphH; gr++ {
-			for gc := 0; gc < glyphW; gc++ {
-				if rows[gr][gc] != '#' {
-					continue
-				}
-				absCol := li*(glyphW+gap) + gc
-				baseIdx := (absCol * (len(ramp) - 1)) / wordW
-
-				// Bevel detection: which neighbors are "on"?
-				up := gr > 0 && rows[gr-1][gc] == '#'
-				down := gr < glyphH-1 && rows[gr+1][gc] == '#'
-				left := gc > 0 && rows[gr][gc-1] == '#'
-				right := gc < glyphW-1 && rows[gr][gc+1] == '#'
-
-				var c lipgloss.Color
-				switch {
-				case !up && !left:
-					// Outer top-left corner: brightest specular highlight.
-					c = rampAt(baseIdx + 4)
-				case !up || !left:
-					// Raised top/left edge: bright highlight.
-					c = rampAt(baseIdx + 3)
-				case !down && !right:
-					// Outer bottom-right corner: deepest face shadow.
-					c = rampAt(baseIdx - 3)
-				case !down || !right:
-					// Recessed bottom/right edge: darker.
-					c = rampAt(baseIdx - 2)
-				case gr == 0:
-					// Top surface: slightly brighter.
-					c = rampAt(baseIdx + 1)
-				case gr == glyphH-1:
-					// Bottom surface: slightly darker.
-					c = rampAt(baseIdx - 1)
-				default:
-					// Inner face.
-					c = rampAt(baseIdx)
-				}
-				grid[gr+1][absCol+1] = lipgloss.NewStyle().Foreground(c).Render(blk)
-			}
-		}
-	}
-
-	var outRows []string
-	for _, row := range grid {
-		var b strings.Builder
-		for _, cell := range row {
-			if cell == "" {
-				b.WriteString(" ")
-			} else {
-				b.WriteString(cell)
-			}
-		}
-		outRows = append(outRows, b.String())
-	}
-	logo := lipgloss.JoinVertical(lipgloss.Left, outRows...)
-
-	// Decorative line under the logo.
-	lineW := wordW + 4
-	gradLine := ""
-	for i := 0; i < lineW; i++ {
-		idx := (i * (len(ramp) - 1)) / lineW
-		ch := "─"
-		if i == 0 || i == lineW-1 {
-			ch = "◆"
-		} else if i == lineW/2 {
-			ch = "◆"
-		}
-		gradLine += lipgloss.NewStyle().Foreground(rampAt(idx)).Render(ch)
-	}
+	logo := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	tag := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#56d364")).
+		Foreground(lipgloss.Color("#94a3b8")).
 		Render(tagline)
 
-	return lipgloss.JoinVertical(lipgloss.Center, logo, gradLine, tag)
+	return lipgloss.JoinVertical(lipgloss.Center, logo, "", tag)
+}
+
+// logoGradient samples the 4-stop logo palette at position t in [0,1]
+// (top → bottom), same approach as flow's fourStopLogoGradient.
+func logoGradient(t float64) (uint8, uint8, uint8) {
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	segment := t * 3.0
+	idx := int(segment)
+	if idx >= 3 {
+		idx = 2
+		segment = 3.0
+	}
+	u := segment - float64(idx)
+	a, b := logoStops[idx], logoStops[idx+1]
+	return lerpU8(a[0], b[0], u), lerpU8(a[1], b[1], u), lerpU8(a[2], b[2], u)
+}
+
+func lerpU8(a, b uint8, t float64) uint8 {
+	return uint8(float64(a) + (float64(b)-float64(a))*t + 0.5)
 }
 
 // renderCompactHeader draws a minimal header: just the tagline text without the

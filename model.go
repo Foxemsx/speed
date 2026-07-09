@@ -52,8 +52,11 @@ func (m *model) reset() tea.Cmd {
 	if m.cancel != nil {
 		m.cancel()
 	}
+	w, h := m.width, m.height
 	cs := newCardState(m.theme, m.compact)
 	m.cardState = cs
+	m.width, m.height = w, h
+	m.syncLayout()
 	m.testStart = time.Now()
 	m.gotResult = false
 	m.quitting = false
@@ -99,11 +102,7 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Keep graphs sized to the card's inner width (wider = more history
-		// visible, so spikes are easier to read).
-		inner := m.innerWidth(msg.Width)
-		m.dlGraph.setWidth(inner)
-		m.ulGraph.setWidth(inner)
+		m.syncLayout()
 		return nil, false
 
 	case spinner.TickMsg:
@@ -145,10 +144,29 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 		if m.progress != nil && m.progress.Err != nil {
 			m.err = m.progress.Err
 		}
-		// Snap displays to final values for a clean summary.
-		m.dlTarget = m.result.DownloadMbps
-		m.ulTarget = m.result.UploadMbps
-		m.pingDisp = m.result.PingMs
+		// Prefer engine averages; if a partial/empty result arrives (cancel
+		// mid-run), keep the live displays so the summary is not all zeros.
+		if m.result.DownloadMbps > 0 {
+			m.dlTarget = m.result.DownloadMbps
+			m.dlDisplay = m.result.DownloadMbps
+		} else if m.dlDisplay > 0 {
+			m.result.DownloadMbps = m.dlDisplay
+			if m.result.DownloadPeak < m.dlDisplay {
+				m.result.DownloadPeak = m.dlDisplay
+			}
+		}
+		if m.result.UploadMbps > 0 {
+			m.ulTarget = m.result.UploadMbps
+			m.ulDisplay = m.result.UploadMbps
+		} else if m.ulDisplay > 0 {
+			m.result.UploadMbps = m.ulDisplay
+			if m.result.UploadPeak < m.ulDisplay {
+				m.result.UploadPeak = m.ulDisplay
+			}
+		}
+		if m.result.PingMs > 0 {
+			m.pingDisp = m.result.PingMs
+		}
 		return nil, false
 
 	case errMsg:
@@ -187,27 +205,24 @@ func (m *model) advance() {
 
 	// Watchdog: drive phase transitions on the local timer so we never hang.
 	// The engine normally sends phase messages too; this is the fallback.
+	// Never cancel the engine here — cancelling used to close the event bridge
+	// before Result arrived, which left the summary at 0.0 forever.
 	if !m.gotResult {
 		now := time.Now()
 		switch m.phase {
 		case PhaseDownload:
-			if now.Sub(m.phaseStart) >= m.phaseDur {
+			if !m.phaseStart.IsZero() && now.Sub(m.phaseStart) >= m.phaseDur {
 				m.phase = PhaseUpload
 				m.phaseStart = now
 			}
 		case PhaseUpload:
-			if now.Sub(m.phaseStart) >= m.phaseDur {
+			if !m.phaseStart.IsZero() && now.Sub(m.phaseStart) >= m.phaseDur {
 				m.phase = PhaseLatency
 				m.phaseStart = now
 			}
-		}
-		// Hard ceiling: if the whole test runs absurdly long, force finish.
-		if now.Sub(m.testStart) > 35*time.Second {
-			m.phase = PhaseDone
-			m.quitting = true
-			if m.cancel != nil {
-				m.cancel()
-			}
+		case PhaseLatency:
+			// Latency should finish in a couple of seconds. If it stalls, keep
+			// showing the phase but do not invent a zeroed Result.
 		}
 	}
 }
@@ -217,6 +232,8 @@ func (m *model) advance() {
 // View renders the Speed Test card. When quitting it returns an empty string so
 // the router can clear the screen before exiting.
 func (m *model) View() string {
+	m.syncLayout()
+
 	var body strings.Builder
 
 	// A faint server/region line inside the card once known. The prominent
@@ -300,19 +317,33 @@ func (m *model) View() string {
 // colored by the latency accent.
 func (m *model) summaryLine() string {
 	if m.phase != PhaseDone {
-		// Live ping placeholder while testing.
 		if m.phase == PhaseLatency {
-			return center(lipgloss.NewStyle().Foreground(m.theme.Latency).
-				Render(fmt.Sprintf("ping  %.0f ms", m.pingDisp)), m.cardWidthFor())
+			msg := "measuring latency…"
+			if m.pingDisp > 0 {
+				msg = fmt.Sprintf("ping  %.0f ms", m.pingDisp)
+			}
+			return center(lipgloss.NewStyle().Foreground(m.theme.Latency).Render(msg), m.cardWidthFor())
 		}
 		return ""
 	}
-	if m.err != nil {
+	if m.err != nil && m.result.DownloadMbps <= 0 && m.result.UploadMbps <= 0 {
 		return center(lipgloss.NewStyle().Foreground(m.theme.Upload).Render(m.err.Error()), m.cardWidthFor())
 	}
-	dl := lipgloss.NewStyle().Foreground(m.theme.Download).Bold(true).Render(m.formatPeak(m.result.DownloadMbps))
-	ul := lipgloss.NewStyle().Foreground(m.theme.Upload).Bold(true).Render(m.formatPeak(m.result.UploadMbps))
-	pg := lipgloss.NewStyle().Foreground(m.theme.Latency).Bold(true).Render(fmt.Sprintf("%.0f ms", m.result.PingMs))
+	dlMbps := m.result.DownloadMbps
+	if dlMbps <= 0 {
+		dlMbps = m.dlDisplay
+	}
+	ulMbps := m.result.UploadMbps
+	if ulMbps <= 0 {
+		ulMbps = m.ulDisplay
+	}
+	pingMs := m.result.PingMs
+	if pingMs <= 0 {
+		pingMs = m.pingDisp
+	}
+	dl := lipgloss.NewStyle().Foreground(m.theme.Download).Bold(true).Render(m.formatPeak(dlMbps))
+	ul := lipgloss.NewStyle().Foreground(m.theme.Upload).Bold(true).Render(m.formatPeak(ulMbps))
+	pg := lipgloss.NewStyle().Foreground(m.theme.Latency).Bold(true).Render(fmt.Sprintf("%.0f ms", pingMs))
 	line := lipgloss.JoinHorizontal(lipgloss.Center,
 		"↓ "+dl, "    ", "↑ "+ul, "    ", "◷ "+pg,
 	)

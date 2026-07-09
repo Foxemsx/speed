@@ -26,6 +26,17 @@ type Theme struct {
 	GraphDownTop    lipgloss.Color // bright tip of the download gradient
 	GraphUpBottom   lipgloss.Color // deep end of the upload gradient
 	GraphUpTop      lipgloss.Color // bright tip of the upload gradient
+
+	// MenuAccentFill is a very faint background used for selected menu cards
+	// to give a subtle "filled" modern card feel without being loud.
+	MenuAccentFill lipgloss.AdaptiveColor
+
+	// Concrete fills for modern menu buttons (selected state). Adaptive colors
+	// alone can leave holes under nested styles; these are solid hex fills.
+	MenuIdleFill   lipgloss.Color // unselected panel
+	MenuSelectDL   lipgloss.Color // speed-test selected
+	MenuSelectUL   lipgloss.Color // bandwidth selected
+	MenuSelectExit lipgloss.Color // exit selected
 }
 
 // DefaultTheme is a modern dark dashboard palette with a deep slate background
@@ -47,4 +58,14 @@ var DefaultTheme = Theme{
 	// Upload gradient: deep amber -> warm gold.
 	GraphUpBottom: lipgloss.Color("#8a3b00"),
 	GraphUpTop:    lipgloss.Color("#ffc15e"),
+
+	// Selected card background. Slightly visible fill so the background appears
+	// behind the text and in the gaps between lines (not just the border).
+	MenuAccentFill: lipgloss.AdaptiveColor{Light: "#e8ecf2", Dark: "#252d3a"},
+
+	// Menu button surfaces — idle is a quiet slate; selected tints match accent.
+	MenuIdleFill:   lipgloss.Color("#12161c"),
+	MenuSelectDL:   lipgloss.Color("#0a242c"), // deep teal glass
+	MenuSelectUL:   lipgloss.Color("#2a1c0a"), // deep amber glass
+	MenuSelectExit: lipgloss.Color("#0f2214"), // deep green glass
 }

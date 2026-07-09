@@ -54,6 +54,7 @@ func (a *appModel) enter(s screenID) tea.Cmd {
 		a.test = newTestModel(cs)
 		a.test.width = a.width
 		a.test.height = a.height
+		a.test.syncLayout()
 		a.screen = screenTest
 		return a.test.Start()
 	case screenMonitor:
@@ -61,6 +62,7 @@ func (a *appModel) enter(s screenID) tea.Cmd {
 		a.monitor = newMonitorModel(cs)
 		a.monitor.width = a.width
 		a.monitor.height = a.height
+		a.monitor.syncLayout()
 		a.screen = screenMonitor
 		return a.monitor.Start()
 	default:
@@ -81,10 +83,12 @@ func (a *appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.test != nil {
 			a.test.width = msg.Width
 			a.test.height = msg.Height
+			a.test.syncLayout()
 		}
 		if a.monitor != nil {
 			a.monitor.width = msg.Width
 			a.monitor.height = msg.Height
+			a.monitor.syncLayout()
 		}
 		return a, nil
 

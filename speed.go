@@ -290,32 +290,87 @@ func (r *bytesReader) Read(p []byte) (int, error) {
 
 // --- Latency probe -------------------------------------------------------
 
-// measureLatency does a single round-trip GET to one target and returns the
-// round-trip time in milliseconds.
+// measureLatency probes RTT to a target. It must NOT download the speed-test
+// payload (those URLs stream huge bodies) — we only wait for response headers,
+// then close. Several samples are taken and the median is returned.
 func measureLatency(ctx context.Context, url string) (float64, error) {
 	if url == "" {
 		return 0, fmt.Errorf("no target for latency probe")
 	}
-	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+
+	// Short per-probe timeout so a hung target cannot stall the whole test.
+	client := &http.Client{Timeout: 4 * time.Second}
+
+	probe := func() (float64, error) {
+		pctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+
+		// Prefer HEAD (no body). Some CDNs reject it — fall back to a ranged GET.
+		req, err := http.NewRequestWithContext(pctx, http.MethodHead, url, nil)
+		if err != nil {
+			return 0, err
+		}
+		start := time.Now()
+		resp, err := client.Do(req)
+		if err != nil || (resp != nil && (resp.StatusCode == http.StatusMethodNotAllowed || resp.StatusCode == http.StatusNotImplemented)) {
+			if resp != nil && resp.Body != nil {
+				resp.Body.Close()
+			}
+			req, err = http.NewRequestWithContext(pctx, http.MethodGet, url, nil)
+			if err != nil {
+				return 0, err
+			}
+			// Ask for a single byte so the server can stop early when supported.
+			req.Header.Set("Range", "bytes=0-0")
+			start = time.Now()
+			resp, err = client.Do(req)
+			if err != nil {
+				return 0, err
+			}
+		}
+		// Headers arrived = useful RTT signal. Never drain the body (that is
+		// what made "measuring latency" look like another full download).
+		ms := float64(time.Since(start).Microseconds()) / 1000.0
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
+		return ms, nil
+	}
+
+	// Warm-up (discarded) + a few samples; median resists one slow outlier.
+	if _, err := probe(); err != nil && ctx.Err() != nil {
 		return 0, err
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return 0, err
+	samples := make([]float64, 0, 3)
+	for i := 0; i < 3; i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		ms, err := probe()
+		if err != nil {
+			continue
+		}
+		if ms > 0 {
+			samples = append(samples, ms)
+		}
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
-	return float64(time.Since(start).Microseconds()) / 1000.0, nil
+	if len(samples) == 0 {
+		return 0, fmt.Errorf("latency probe failed")
+	}
+	// Insertion-sort tiny slice, pick median.
+	for i := 1; i < len(samples); i++ {
+		for j := i; j > 0 && samples[j] < samples[j-1]; j-- {
+			samples[j], samples[j-1] = samples[j-1], samples[j]
+		}
+	}
+	return samples[len(samples)/2], nil
 }
 
 // --- Orchestration -------------------------------------------------------
 
 // Run executes the full test: discover targets, download, upload, latency.
 // It streams Phase transitions on p.Phases, Samples on p.Samples, and a final
-// Result on p.Result. The caller is expected to cancel the passed context to
-// abort (e.g. on quit).
+// Result on p.Result. Always emits a Result (best-effort partials on cancel).
 func Run(ctx context.Context, p *Progress, connections int, duration time.Duration) {
 	if connections <= 0 {
 		connections = defaultConnections
@@ -324,12 +379,31 @@ func Run(ctx context.Context, p *Progress, connections int, duration time.Durati
 		duration = defaultDuration
 	}
 
+	var (
+		dlBytes, ulBytes uint64
+		dlPeak, ulPeak   float64
+		ping             float64
+	)
+	// Ensure the UI always gets a final Result, even on cancel/error mid-run.
+	defer func() {
+		sendPhase(p, PhaseDone)
+		select {
+		case p.Result <- Result{
+			DownloadMbps: bytesToMbps(dlBytes, duration),
+			UploadMbps:   bytesToMbps(ulBytes, duration),
+			PingMs:       ping,
+			DownloadPeak: dlPeak,
+			UploadPeak:   ulPeak,
+		}:
+		default:
+		}
+	}()
+
 	// Phase: finding servers.
 	sendPhase(p, PhaseFinding)
 	urls, names, region, err := fetchTargets(connections)
 	if err != nil {
 		p.Err = err
-		p.Result <- Result{}
 		return
 	}
 	p.URLs = urls
@@ -345,37 +419,31 @@ func Run(ctx context.Context, p *Progress, connections int, duration time.Durati
 	select {
 	case <-time.After(900 * time.Millisecond):
 	case <-ctx.Done():
-		p.Result <- Result{}
 		return
 	}
 
 	// Phase: download.
 	sendPhase(p, PhaseDownload)
 	dlCounter := &counter{}
-	dlPeak := runTimedPhase(ctx, urls, duration, dlCounter, false, p, PhaseDownload)
-	dlBytes := dlCounter.value()
+	dlPeak = runTimedPhase(ctx, urls, duration, dlCounter, false, p, PhaseDownload)
+	dlBytes = dlCounter.value()
+	if ctx.Err() != nil {
+		return
+	}
 
 	// Phase: upload.
 	sendPhase(p, PhaseUpload)
 	ulCounter := &counter{}
-	ulPeak := runTimedPhase(ctx, urls, duration, ulCounter, true, p, PhaseUpload)
-	ulBytes := ulCounter.value()
-
-	// Phase: latency.
-	sendPhase(p, PhaseLatency)
-	ping, err := measureLatency(ctx, urls[0])
-	if err != nil {
-		// Non-fatal: we can still report speed without a ping.
-		ping = 0
+	ulPeak = runTimedPhase(ctx, urls, duration, ulCounter, true, p, PhaseUpload)
+	ulBytes = ulCounter.value()
+	if ctx.Err() != nil {
+		return
 	}
 
-	sendPhase(p, PhaseDone)
-	p.Result <- Result{
-		DownloadMbps: bytesToMbps(dlBytes, duration),
-		UploadMbps:   bytesToMbps(ulBytes, duration),
-		PingMs:       ping,
-		DownloadPeak: dlPeak,
-		UploadPeak:   ulPeak,
+	// Phase: latency (headers-only RTT — must stay fast).
+	sendPhase(p, PhaseLatency)
+	if ms, err := measureLatency(ctx, urls[0]); err == nil {
+		ping = ms
 	}
 }
 

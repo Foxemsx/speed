@@ -52,8 +52,11 @@ func (m *monitorModel) reset() tea.Cmd {
 	if m.cancel != nil {
 		m.cancel()
 	}
+	w, h := m.width, m.height
 	cs := newCardState(m.theme, m.compact)
 	m.cardState = cs
+	m.width, m.height = w, h
+	m.syncLayout()
 	m.startTime = time.Now()
 	m.dlPeak = 0
 	m.ulPeak = 0
@@ -99,9 +102,7 @@ func (m *monitorModel) Update(msg tea.Msg) (tea.Cmd, bool) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		inner := m.innerWidth(msg.Width)
-		m.dlGraph.setWidth(inner)
-		m.ulGraph.setWidth(inner)
+		m.syncLayout()
 		return nil, false
 
 	case spinner.TickMsg:
@@ -165,21 +166,17 @@ func (m *monitorModel) advance() {
 	}
 	m.dlDisplay = lerp(m.dlDisplay, m.dlTarget, animFactor)
 	m.ulDisplay = lerp(m.ulDisplay, m.ulTarget, animFactor)
-	// The monitor measures download AND upload every tick at the same time,
-	// so there is no single "active phase" to gate on - push both graphs each
-	// tick (skipping ~0 so idle traffic doesn't draw a zero baseline).
-	if m.dlDisplay > 0 {
-		m.dlGraph.push(m.dlDisplay)
-	}
-	if m.ulDisplay > 0 {
-		m.ulGraph.push(m.ulDisplay)
-	}
+	// Push every tick so the timeline scrolls continuously (zeros = idle gap).
+	m.dlGraph.push(m.dlDisplay)
+	m.ulGraph.push(m.ulDisplay)
 }
 
 // View renders the live monitor card. Layout mirrors the Speed Test card but
 // shows both DL + UL live (no progress countdown) plus an uptime line and a
 // pause indicator.
 func (m *monitorModel) View() string {
+	m.syncLayout()
+
 	var body strings.Builder
 
 	if m.serverName != "" {
