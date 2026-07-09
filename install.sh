@@ -448,8 +448,6 @@ func (m model) doneView() string {
 	b.WriteString("\n\n")
 	b.WriteString(hintStyle.Render("Run it now:  riptide"))
 	b.WriteString("\n")
-	b.WriteString(hintStyle.Render("Custom bg:   riptide --bg #0d1117"))
-	b.WriteString("\n")
 	b.WriteString(hintStyle.Render("Press Enter or q to finish"))
 	return cardStyle.Render(b.String())
 }
@@ -525,7 +523,6 @@ rc=$?
 if [ "$rc" -eq 0 ]; then
   echo ""
   echo "✓ riptide installed! Start it with:  riptide"
-  echo "  (custom background:  riptide --bg #0d1117)"
 else
   echo "" >&2
   echo "The installer finished with an error. Re-run: bash install.sh" >&2

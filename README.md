@@ -70,7 +70,7 @@ Both modes share the same card UI, accent colors (teal ↓ / amber ↑), and key
 
 ## Quick start
 
-**Linux / macOS** (installer — no sudo):
+**Linux** (installer — no sudo):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/install.sh | sh
@@ -95,7 +95,7 @@ go build -o riptide ./cmd/riptide    # Windows: go build -o riptide.exe ./cmd/ri
 
 > Put `$(go env GOPATH)/bin` on your `PATH` if `riptide` is not found after `go install`.
 
-Uninstall (Linux/macOS):
+Uninstall (Linux):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh

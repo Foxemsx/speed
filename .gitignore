@@ -1,0 +1,11 @@
+# Local tooling
+mcps/
+
+# Binaries
+riptide
+riptide.exe
+*.exe
+
+# Go
+*.test
+*.out
