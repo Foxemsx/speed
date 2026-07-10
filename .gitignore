@@ -4,7 +4,11 @@ mcps/
 # Binaries
 riptide
 riptide.exe
+riptide~
 *.exe
+
+# Release output
+dist/
 
 # Go
 *.test

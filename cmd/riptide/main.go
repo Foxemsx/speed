@@ -12,10 +12,13 @@ import (
 	"github.com/Foxemsx/riptide/internal/ui"
 )
 
+var version = "dev"
+
 func main() {
 	var (
 		themeFlag   = flag.String("theme", "default", "color theme: default")
 		compactFlag = flag.Bool("compact", false, "skip the large logo, show tagline only")
+		versionFlag = flag.Bool("v", false, "print version and exit")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of riptide:\n\n")
@@ -23,6 +26,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n  riptide\n  riptide --compact\n")
 	}
 	flag.Parse()
+	if *versionFlag {
+		fmt.Printf("riptide %s\n", version)
+		return
+	}
 
 	t := theme.DefaultTheme
 	_ = themeFlag // reserved for future palettes
