@@ -13,3 +13,8 @@ dist/
 # Go
 *.test
 *.out
+
+# Local databases
+*.db
+*.db-wal
+*.db-shm

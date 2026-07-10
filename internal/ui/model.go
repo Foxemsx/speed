@@ -8,35 +8,37 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/Foxemsx/riptide/internal/db"
 	"github.com/Foxemsx/riptide/internal/engine"
 	apptheme "github.com/Foxemsx/riptide/internal/theme"
-
 )
 
-// model is the bubbletea sub-model for the one-shot Speed Test card. It embeds
-// *cardState for all shared rendering/graph/animation state and adds only the
-// test-specific fields (final result + the phase watchdog). It does NOT
-// implement tea.Model directly; the app router (app.go) owns Init/Update/View
-// routing and calls this model's Start/Update/View methods.
+// model is the bubbletea sub-model for the one-shot Speed Test card.
 type model struct {
 	*cardState
 
-	// Test-specific state.
-	testStart time.Time // when the whole test began (hard watchdog)
-	quitting bool
-	result   engine.Result
+	testStart time.Time
+	quitting  bool
+	result    engine.Result
 	gotResult bool
+
+	store      *db.Store
+	history    []db.TestRun
+	savePrompt savePromptModel
+	autoSaved  bool
+	savedFlash string
 }
 
-// newTestModel builds a fresh Speed Test card from shared state.
-func newTestModel(cs *cardState) *model {
-	m := &model{cardState: cs}
+func newTestModel(cs *cardState, store *db.Store) *model {
+	m := &model{
+		cardState:  cs,
+		store:      store,
+		savePrompt: newSavePrompt(cs.theme, "speed"),
+	}
 	m.testStart = time.Now()
 	return m
 }
 
-// Start kicks off the background test + channel bridge and returns the telegram
-// of commands that keep the UI alive (spinner tick, refresh tick, event listen).
 func (m *model) Start() tea.Cmd {
 	bridgeLaunch(m.ctx, m.progress, m.events, func() {
 		engine.Run(m.ctx, m.progress, engine.DefaultConnections, engine.DefaultDuration)
@@ -48,14 +50,13 @@ func (m *model) Start() tea.Cmd {
 	)
 }
 
-// reset tears down the in-flight test and starts a fresh one, clearing the
-// graphs and all live state. Old goroutines wind down via their cancelled
-// context, so this is safe to call mid-test or after completion.
 func (m *model) reset() tea.Cmd {
 	if m.cancel != nil {
 		m.cancel()
 	}
 	w, h := m.width, m.height
+	hist := m.history
+	store := m.store
 	cs := newCardState(m.theme, m.compact)
 	m.cardState = cs
 	m.width, m.height = w, h
@@ -63,6 +64,13 @@ func (m *model) reset() tea.Cmd {
 	m.testStart = time.Now()
 	m.gotResult = false
 	m.quitting = false
+	m.autoSaved = false
+	m.savedFlash = ""
+	m.history = hist
+	m.store = store
+	m.savePrompt = newSavePrompt(m.theme, "speed")
+	m.savePrompt.width = w
+	m.savePrompt.height = h
 
 	bridgeLaunch(m.ctx, m.progress, m.events, func() {
 		engine.Run(m.ctx, m.progress, engine.DefaultConnections, engine.DefaultDuration)
@@ -74,10 +82,17 @@ func (m *model) reset() tea.Cmd {
 	)
 }
 
-// Update handles events. It returns a tea.Cmd for the router to perform; it
-// never calls tea.Quit itself — the router owns quit/back navigation. The
-// returned bool is true when the model wants to go back to the menu.
 func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
+	if m.savePrompt.active {
+		if cmd := m.savePrompt.Update(msg); cmd != nil {
+			return cmd, false
+		}
+		// Still active after update (typing) — consume keys.
+		if m.savePrompt.active {
+			return nil, false
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -88,7 +103,6 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 			}
 			return tea.Quit, false
 		case "esc", "m":
-			// Back to the start menu.
 			if m.cancel != nil {
 				m.cancel()
 			}
@@ -101,11 +115,31 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 		case "c":
 			m.unit = (m.unit + 1) % 4
 			return nil, false
+		case "s":
+			// Named save of current/final numbers.
+			dl := m.result.DownloadMbps
+			if dl <= 0 {
+				dl = m.dlDisplay
+			}
+			ul := m.result.UploadMbps
+			if ul <= 0 {
+				ul = m.ulDisplay
+			}
+			pg := m.result.PingMs
+			if pg <= 0 {
+				pg = m.pingDisp
+			}
+			m.savePrompt.width = m.width
+			m.savePrompt.height = m.height
+			m.savePrompt.open(dl, ul, pg, m.result.DownloadPeak, m.result.UploadPeak, m.serverName)
+			return textinputBlink(), false
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 		m.syncLayout()
+		m.savePrompt.width = msg.Width
+		m.savePrompt.height = msg.Height
 		return nil, false
 
 	case spinner.TickMsg:
@@ -118,7 +152,6 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 		if msg.phase == engine.PhaseConnected && m.progress.ServerName != "" {
 			m.serverName = m.progress.ServerName
 		}
-		// Start the per-phase timer for download/upload (the timed phases).
 		if msg.phase == engine.PhaseDownload || msg.phase == engine.PhaseUpload {
 			m.phaseStart = time.Now()
 			m.phaseDur = engine.DefaultDuration
@@ -136,7 +169,6 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 		return listenCmd(m.events), false
 
 	case tickMsg:
-		// Advance animations (lerp + graph growth) toward targets.
 		m.advance()
 		return m.tickCmd(), false
 
@@ -147,8 +179,6 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 		if m.progress != nil && m.progress.Err != nil {
 			m.err = m.progress.Err
 		}
-		// Prefer engine averages; if a partial/empty result arrives (cancel
-		// mid-run), keep the live displays so the summary is not all zeros.
 		if m.result.DownloadMbps > 0 {
 			m.dlTarget = m.result.DownloadMbps
 			m.dlDisplay = m.result.DownloadMbps
@@ -170,7 +200,8 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 		if m.result.PingMs > 0 {
 			m.pingDisp = m.result.PingMs
 		}
-		return nil, false
+		// Auto-save completed runs (once).
+		return m.autoSaveCmd(), false
 
 	case errMsg:
 		m.err = msg.err
@@ -183,10 +214,32 @@ func (m *model) Update(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// advance interpolates displayed values toward targets and pushes the smoothed
-// value into the active phase's graph. It also runs a self-contained phase
-// watchdog so the UI can never freeze in a single phase even if a network call
-// stalls and the engine's events are delayed.
+func (m *model) autoSaveCmd() tea.Cmd {
+	if m.autoSaved || m.store == nil {
+		return nil
+	}
+	if m.result.DownloadMbps <= 0 && m.result.UploadMbps <= 0 {
+		return nil
+	}
+	m.autoSaved = true
+	run := db.TestRun{
+		Name:         db.AutoName("speed", time.Now()),
+		Kind:         "speed",
+		DownloadMbps: m.result.DownloadMbps,
+		UploadMbps:   m.result.UploadMbps,
+		PingMs:       m.result.PingMs,
+		DownloadPeak: m.result.DownloadPeak,
+		UploadPeak:   m.result.UploadPeak,
+		Server:       m.serverName,
+		CreatedAt:    time.Now(),
+	}
+	return func() tea.Msg { return saveRunMsg{run: run} }
+}
+
+func textinputBlink() tea.Cmd {
+	return func() tea.Msg { return nil }
+}
+
 func (m *model) advance() {
 	if !m.gotResult {
 		m.dlDisplay = lerp(m.dlDisplay, m.dlTarget, animFactor)
@@ -206,10 +259,6 @@ func (m *model) advance() {
 		}
 	}
 
-	// Watchdog: drive phase transitions on the local timer so we never hang.
-	// The engine normally sends phase messages too; this is the fallback.
-	// Never cancel the engine here — cancelling used to close the event bridge
-	// before engine.Result arrived, which left the summary at 0.0 forever.
 	if !m.gotResult {
 		now := time.Now()
 		switch m.phase {
@@ -223,60 +272,56 @@ func (m *model) advance() {
 				m.phase = engine.PhaseLatency
 				m.phaseStart = now
 			}
-		case engine.PhaseLatency:
-			// Latency should finish in a couple of seconds. If it stalls, keep
-			// showing the phase but do not invent a zeroed engine.Result.
 		}
 	}
 }
 
-// --- View ----------------------------------------------------------------
-
-// View renders the Speed Test card. When quitting it returns an empty string so
-// the router can clear the screen before exiting.
 func (m *model) View() string {
+	if m.savePrompt.active {
+		m.savePrompt.width = m.width
+		m.savePrompt.height = m.height
+		return m.savePrompt.View()
+	}
+
 	m.syncLayout()
 
 	var body strings.Builder
 
-	// A faint server/region line inside the card once known. The prominent
-	// SPEED header now lives above the card (see renderHeader).
 	if m.serverName != "" {
-		inner := m.cardWidthFor() - 4 // border + padding
+		inner := m.cardWidthFor() - 4
 		body.WriteString(center(lipgloss.NewStyle().
 			Foreground(m.theme.Muted).
 			Render("connected to "+m.serverName), inner))
 		body.WriteString("\n\n")
 	}
 
-	// engine.Phase status line (spinner for finding servers, check for connected).
 	body.WriteString(m.statusLine())
 	body.WriteString("\n\n")
 
-	// Download block.
 	body.WriteString(m.metricBlock(
 		"↓ download", m.theme.Download, m.dlDisplay, m.dlGraph, m.result.DownloadPeak, engine.PhaseDownload,
 	))
 	body.WriteString("\n\n")
 
-	// Upload block.
 	body.WriteString(m.metricBlock(
 		"↑ upload", m.theme.Upload, m.ulDisplay, m.ulGraph, m.result.UploadPeak, engine.PhaseUpload,
 	))
 	body.WriteString("\n\n")
 
-	// Summary / ping line.
 	body.WriteString(m.summaryLine())
 
-	// Footer hint.
+	if m.savedFlash != "" {
+		body.WriteString("\n")
+		body.WriteString(center(lipgloss.NewStyle().Foreground(m.theme.Highlight).Render("✓ "+m.savedFlash), m.cardWidthFor()))
+	}
+
 	hl := lipgloss.NewStyle().Foreground(m.theme.Highlight).Bold(true)
 	mt := lipgloss.NewStyle().Foreground(m.theme.Muted)
 	hint := lipgloss.JoinHorizontal(lipgloss.Center,
 		hl.Render("esc"), mt.Render(" menu  ·  "),
-		hl.Render("q"), mt.Render(" quit  ·  "),
+		hl.Render("s"), mt.Render(" save  ·  "),
 		hl.Render("r"), mt.Render(" reset  ·  "),
 		hl.Render("c"), mt.Render(" units  ·  "),
-		hl.Render("t"), mt.Render(" compact  ·  "),
 		hl.Render("?"), mt.Render(" help"),
 	)
 	body.WriteString("\n\n")
@@ -289,20 +334,46 @@ func (m *model) View() string {
 		Width(m.cardWidthFor()).
 		Render(body.String())
 
-	// Header (SPEED + tagline) sits above the card.
+	// History beside the speed card when the terminal is wide enough;
+	// otherwise stack underneath.
+	sideBySide := m.width >= historySideMinWidth
+	histW := m.cardWidthFor()
+	if sideBySide {
+		// Leave a gap; size history to fill remaining space (capped).
+		histW = m.width - m.cardWidthFor() - 8
+		if histW > 56 {
+			histW = 56
+		}
+		if histW < 36 {
+			histW = 36
+		}
+	}
+	hist := historyBlock(m.theme, m.history, histW, m.unit, "")
+
 	var header string
 	if m.compact {
 		header = renderCompactHeader("Wonder how speedy your internet is?")
 	} else {
 		header = renderHeader("Wonder how speedy your internet is?")
 	}
+
+	var main string
+	if sideBySide {
+		main = lipgloss.JoinHorizontal(lipgloss.Top,
+			card,
+			lipgloss.NewStyle().Width(2).Render(" "),
+			hist,
+		)
+	} else {
+		main = lipgloss.JoinVertical(lipgloss.Center, card, "", hist)
+	}
+
 	stack := lipgloss.JoinVertical(lipgloss.Center,
 		header,
-		"", // spacer
-		card,
+		"",
+		main,
 	)
 
-	// Help overlay (modal) is drawn when toggled.
 	if m.showHelp {
 		return m.renderHelp()
 	}
@@ -310,8 +381,6 @@ func (m *model) View() string {
 	return apptheme.PaintScreen(m.theme, m.width, m.height, stack)
 }
 
-// summaryLine shows the final download / upload / ping on one line, with ping
-// colored by the latency accent.
 func (m *model) summaryLine() string {
 	if m.phase != engine.PhaseDone {
 		if m.phase == engine.PhaseLatency {
@@ -347,13 +416,12 @@ func (m *model) summaryLine() string {
 	return center(line, m.cardWidthFor())
 }
 
-// renderHelp renders a centered help modal describing the live controls. It
-// replaces the normal card view while shown (toggle with ?).
 func (m *model) renderHelp() string {
 	return renderHelpPanel(m.theme, "Speed Test — Help", []helpBinding{
 		{keys: "esc / m", action: "back to main menu"},
 		{keys: "?", action: "close this help"},
 		{keys: "q", action: "quit riptide"},
+		{keys: "s", action: "save run with a custom name"},
 		{keys: "r", action: "restart the speed test"},
 		{keys: "c", action: "cycle units  Mbps · KB/s · MB/s · GB/s"},
 		{keys: "t", action: "toggle compact logo"},

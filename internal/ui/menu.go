@@ -8,16 +8,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	apptheme "github.com/Foxemsx/riptide/internal/theme"
-
 )
 
-// Layout thresholds for a "crazy good" responsive menu.
+// Layout thresholds for a responsive menu.
 const (
-	horizontalThreshold  = 92  // below this → vertical stack of cards
-	previewThreshold     = 118 // wide enough for side preview pane
-	fullCardMinHeight    = 30  // below this use "tight" (fewer lines)
-	previewSideMinHeight = 12  // on wide terms, side preview only if height >= this
-	menuTickInterval     = 100 * time.Millisecond
+	horizontalThreshold = 100 // below this → vertical stack
+	gridThreshold       = 88  // wide enough for 2×2 grid
+	menuTickInterval    = 100 * time.Millisecond
 )
 
 // screenID identifies which destination the menu routes to.
@@ -27,6 +24,7 @@ const (
 	screenMenu screenID = iota
 	screenTest
 	screenMonitor
+	screenSettings
 	screenExit
 )
 
@@ -34,24 +32,21 @@ const (
 type menuItem struct {
 	title    string
 	subtitle string
-	icon     string
 	screen   screenID
-	hotkey   string   // "1", "2", "3" etc.
-	features []string // short bullets shown in rich cards
-	badge    string   // e.g. "one-shot", "● LIVE"
+	hotkey   string
+	features []string
+	badge    string
 }
 
-// menuModel is the startup screen. It shows a row of selectable boxes (Speed
-// Test / Bandwidth Monitor / Exit) that can be navigated with the keyboard or
-// the mouse, and emits a menuSelectMsg when the user picks one.
+// menuModel is the startup screen.
 type menuModel struct {
-	theme apptheme.Theme
+	theme   apptheme.Theme
 	compact bool
 	width   int
 	height  int
 	cursor  int
-	hovered int     // transient mouse hover (for highlight, not selection)
-	pulse   float64 // 0..1 animation phase for selected glow
+	hovered int
+	pulse   float64
 	spinner spinner.Model
 	items   []menuItem
 }
@@ -67,20 +62,30 @@ func newMenuModel(theme apptheme.Theme, compact bool) *menuModel {
 		hovered: -1,
 		spinner: s,
 		items: []menuItem{
-			{title: "Speed Test", subtitle: "one-shot DL · UL · ping", icon: "", screen: screenTest, hotkey: "1",
-				features: []string{"Download + upload + latency", "~10s timed phases", "Parallel connections"},
-				badge: "ONE-SHOT"},
-			{title: "Bandwidth", subtitle: "live monitor · no test traffic", icon: "", screen: screenMonitor, hotkey: "2",
+			{
+				title: "Speed Test", subtitle: "one-shot DL · UL · ping", screen: screenTest, hotkey: "1",
+				features: []string{"Download + upload + latency", "~10s timed phases", "Save & compare runs"},
+				badge:    "ONE-SHOT",
+			},
+			{
+				title: "Bandwidth", subtitle: "live monitor · real traffic", screen: screenMonitor, hotkey: "2",
 				features: []string{"Real PC throughput", "Session peaks", "Zero generated traffic"},
-				badge: "LIVE"},
-			{title: "Exit", subtitle: "quit riptide cleanly", icon: "", screen: screenExit, hotkey: "3",
-				features: []string{"Cancel any running test", "Clean shutdown"},
-				badge: ""},
+				badge:    "LIVE",
+			},
+			{
+				title: "Settings", subtitle: "themes · history · install", screen: screenSettings, hotkey: "3",
+				features: []string{"11 color themes", "Searchable settings", "Database & uninstall"},
+				badge:    "TUNE",
+			},
+			{
+				title: "Exit", subtitle: "quit riptide cleanly", screen: screenExit, hotkey: "4",
+				features: []string{"Cancel any running test", "Clean shutdown", "See you next wave"},
+				badge:    "",
+			},
 		},
 	}
 }
 
-// Init spins the spinner and starts the menu pulse tick for animated glow.
 func (m *menuModel) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, m.tickCmd())
 }
@@ -89,7 +94,6 @@ func (m *menuModel) tickCmd() tea.Cmd {
 	return tea.Tick(menuTickInterval, func(time.Time) tea.Msg { return menuTickMsg{} })
 }
 
-// menuTickMsg drives subtle selection pulse animation.
 type menuTickMsg struct{}
 
 func (m *menuModel) Update(msg tea.Msg) (tea.Cmd, bool) {
@@ -98,16 +102,19 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Cmd, bool) {
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return tea.Quit, false
-		case "left", "h", "k":
-			m.cursor = (m.cursor - 1 + len(m.items)) % len(m.items)
-			m.hovered = -1
+		case "left", "h":
+			m.move(-1)
 			return nil, false
-		case "right", "l", "j":
-			m.cursor = (m.cursor + 1) % len(m.items)
-			m.hovered = -1
+		case "right", "l":
+			m.move(1)
 			return nil, false
-		case "1", "2", "3":
-			// Direct hotkeys (PR1+)
+		case "up", "k":
+			m.moveUp()
+			return nil, false
+		case "down", "j":
+			m.moveDown()
+			return nil, false
+		case "1", "2", "3", "4":
 			for i, it := range m.items {
 				if it.hotkey == msg.String() {
 					m.cursor = i
@@ -126,7 +133,6 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Cmd, bool) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return cmd, false
 	case menuTickMsg:
-		// Advance subtle pulse for selected glow (0..1)
 		m.pulse = m.pulse + 0.08
 		if m.pulse > 1 {
 			m.pulse = 0
@@ -135,7 +141,6 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Cmd, bool) {
 	case tea.MouseMsg:
 		switch {
 		case msg.Action == tea.MouseActionMotion:
-			// Hover highlight (does not change cursor/selection)
 			hit := -1
 			for i, box := range m.boxRects() {
 				if msg.X >= box.x && msg.X < box.x+box.w &&
@@ -162,34 +167,67 @@ func (m *menuModel) Update(msg tea.Msg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-// selectCurrent emits the right command for the highlighted item.
+func (m *menuModel) move(delta int) {
+	m.cursor = (m.cursor + delta + len(m.items)) % len(m.items)
+	m.hovered = -1
+}
+
+func (m *menuModel) moveUp() {
+	mode, _, _, _, _, _ := m.computeLayout()
+	if mode == "grid" {
+		if m.cursor >= 2 {
+			m.cursor -= 2
+		} else {
+			m.cursor += 2
+			if m.cursor >= len(m.items) {
+				m.cursor = len(m.items) - 1
+			}
+		}
+	} else {
+		m.move(-1)
+	}
+	m.hovered = -1
+}
+
+func (m *menuModel) moveDown() {
+	mode, _, _, _, _, _ := m.computeLayout()
+	if mode == "grid" {
+		if m.cursor < 2 {
+			m.cursor += 2
+			if m.cursor >= len(m.items) {
+				m.cursor = len(m.items) - 1
+			}
+		} else {
+			m.cursor -= 2
+		}
+	} else {
+		m.move(1)
+	}
+	m.hovered = -1
+}
+
 func (m *menuModel) selectCurrent() tea.Cmd {
 	switch m.items[m.cursor].screen {
 	case screenTest:
 		return menuSelectCmd(screenTest)
 	case screenMonitor:
 		return menuSelectCmd(screenMonitor)
-	default: // Exit
+	case screenSettings:
+		return menuSelectCmd(screenSettings)
+	default:
 		return tea.Quit
 	}
 }
 
-// boxRect is a screen rectangle for mouse hit-testing.
 type boxRect struct{ x, y, w, h int }
-
-func (m *menuModel) isTight() bool {
-	return m.height > 0 && m.height < fullCardMinHeight
-}
 
 func (m *menuModel) headerHeight() int {
 	if m.compact {
 		return 4
 	}
-	// ANSI Shadow logo: 6 rows + tagline + gaps.
 	return 10
 }
 
-// computeLayout is the single source of truth. Used by View + boxRects.
 func (m *menuModel) computeLayout() (mode string, boxW, boxH, startY, startX int, gap int) {
 	w, h := m.width, m.height
 	if w <= 0 {
@@ -199,28 +237,45 @@ func (m *menuModel) computeLayout() (mode string, boxW, boxH, startY, startX int
 		h = 30
 	}
 	gap = 2
-	boxW = m.boxWidth(w)
-	boxH = 10 // fixed for consistent rich cards (8 inner lines + padding + room for glow)
+	boxH = 14 // room for badge + bottom pad so labels stay inside the fill
+	num := len(m.items)
 
+	if num == 4 && w >= gridThreshold {
+		mode = "grid"
+		boxW = min((w-8-gap)/2, 34)
+		if boxW < 22 {
+			boxW = 22
+		}
+		totalW := boxW*2 + gap
+		totalH := m.headerHeight() + 1 + boxH*2 + gap + 2
+		startY = (h - totalH) / 2
+		if startY < 0 {
+			startY = 0
+		}
+		startX = (w - totalW) / 2
+		if startX < 0 {
+			startX = 0
+		}
+		return
+	}
+
+	boxW = m.boxWidth(w, num)
 	mode = "horizontal"
 	if w < horizontalThreshold {
 		mode = "vertical"
 		boxW = min(w-6, 48)
 	}
 
-	num := len(m.items)
 	totalW := num * boxW
 	if mode != "vertical" {
 		totalW += (num - 1) * gap
 	}
-
 	stackH := m.headerHeight() + 1
 	if mode == "vertical" {
-		stackH += num*boxH + (num-1)
+		stackH += num*boxH + (num - 1)
 	} else {
 		stackH += boxH
 	}
-
 	startY = (h - stackH) / 2
 	if startY < 0 {
 		startY = 0
@@ -239,44 +294,41 @@ func min(a, b int) int {
 	return b
 }
 
-// boxRects computes the on-screen rectangle of each menu box, mirroring the
-// layout in View(). It is used for click detection.
 func (m *menuModel) boxRects() []boxRect {
 	mode, boxW, boxH, startY, startX, gap := m.computeLayout()
-
 	rects := make([]boxRect, len(m.items))
 	boxesY := startY + m.headerHeight() + 1
 
-	if mode == "vertical" {
+	switch mode {
+	case "vertical":
 		for i := range m.items {
+			rects[i] = boxRect{x: startX, y: boxesY + i*(boxH+1), w: boxW, h: boxH}
+		}
+	case "grid":
+		for i := range m.items {
+			col := i % 2
+			row := i / 2
 			rects[i] = boxRect{
-				x: startX,
-				y: boxesY + i*(boxH+1),
+				x: startX + col*(boxW+gap),
+				y: boxesY + row*(boxH+gap),
 				w: boxW,
 				h: boxH,
 			}
 		}
-		return rects
-	}
-
-	// Horizontal (with or without preview)
-	for i := range m.items {
-		rects[i] = boxRect{
-			x: startX + i*(boxW+gap),
-			y: boxesY,
-			w: boxW,
-			h: boxH,
+	default:
+		for i := range m.items {
+			rects[i] = boxRect{x: startX + i*(boxW+gap), y: boxesY, w: boxW, h: boxH}
 		}
 	}
 	return rects
 }
 
-func (m *menuModel) boxWidth(termW int) int {
-	// Three boxes + 2 gaps, with comfortable margins.
-	// 28 leaves enough inner width for feature lines (e.g. "• ~10s fixed duration")
-	// so lipgloss does not wrap mid-card and punch holes in the selection fill.
+func (m *menuModel) boxWidth(termW, num int) int {
+	if num < 1 {
+		num = 4
+	}
 	maxEach := 28
-	each := (termW - 4 - 2*2) / 3
+	each := (termW - 4 - (num-1)*2) / num
 	if each > maxEach {
 		each = maxEach
 	}
@@ -289,34 +341,50 @@ func (m *menuModel) boxWidth(termW int) int {
 func (m *menuModel) View() string {
 	mode, boxW, _, _, _, gap := m.computeLayout()
 
-	// Build cards with spacing so they read as separate buttons.
 	boxes := make([]string, len(m.items))
 	for i, it := range m.items {
-		box := m.renderBox(i, it, boxW)
-		if mode == "vertical" {
-			if i < len(m.items)-1 {
-				box = lipgloss.NewStyle().MarginBottom(1).Render(box)
-			}
-		} else if i < len(m.items)-1 {
-			box = lipgloss.NewStyle().MarginRight(gap).Render(box)
-		}
-		boxes[i] = box
+		boxes[i] = m.renderBox(i, it, boxW)
 	}
 
 	var cards string
-	if mode == "vertical" {
-		cards = lipgloss.JoinVertical(lipgloss.Left, boxes...)
-	} else {
-		cards = lipgloss.JoinHorizontal(lipgloss.Top, boxes...)
+	switch mode {
+	case "vertical":
+		parts := make([]string, len(boxes))
+		for i, b := range boxes {
+			if i < len(boxes)-1 {
+				parts[i] = lipgloss.NewStyle().MarginBottom(1).Render(b)
+			} else {
+				parts[i] = b
+			}
+		}
+		cards = lipgloss.JoinVertical(lipgloss.Left, parts...)
+	case "grid":
+		row0 := lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().MarginRight(gap).Render(boxes[0]),
+			boxes[1],
+		)
+		row1 := lipgloss.JoinHorizontal(lipgloss.Top,
+			lipgloss.NewStyle().MarginRight(gap).Render(boxes[2]),
+			boxes[3],
+		)
+		cards = lipgloss.JoinVertical(lipgloss.Center, row0, lipgloss.NewStyle().Height(1).Render(""), row1)
+	default:
+		parts := make([]string, len(boxes))
+		for i, b := range boxes {
+			if i < len(boxes)-1 {
+				parts[i] = lipgloss.NewStyle().MarginRight(gap).Render(b)
+			} else {
+				parts[i] = b
+			}
+		}
+		cards = lipgloss.JoinHorizontal(lipgloss.Top, parts...)
 	}
 
-	// Footer
 	hl := lipgloss.NewStyle().Foreground(m.theme.Highlight).Bold(true)
 	mt := lipgloss.NewStyle().Foreground(m.theme.Muted)
 	hint := lipgloss.JoinHorizontal(lipgloss.Center,
-		hl.Render("←/→"), mt.Render(" or "),
-		hl.Render("j/k"), mt.Render(" move  ·  "),
-		hl.Render("1/2/3"), mt.Render(" pick  ·  "),
+		hl.Render("←→↑↓"), mt.Render(" move  ·  "),
+		hl.Render("1–4"), mt.Render(" pick  ·  "),
 		hl.Render("enter"), mt.Render(" select  ·  "),
 		hl.Render("q"), mt.Render(" quit  ·  "),
 		hl.Render("t"), mt.Render(" compact"),
@@ -329,8 +397,11 @@ func (m *menuModel) View() string {
 		header = renderHeader("Choose how you'd like to measure your connection")
 	}
 
+	rule := lipgloss.NewStyle().Foreground(m.theme.Border).Render(strings.Repeat("─", 36))
+
 	stack := lipgloss.JoinVertical(lipgloss.Center,
 		header,
+		rule,
 		"",
 		cards,
 		"",
@@ -344,23 +415,23 @@ func (m *menuModel) View() string {
 	return apptheme.PaintScreen(m.theme, m.width, ch, stack)
 }
 
-// renderBox draws one modern menu button. Selected buttons get a solid
-// accent-tinted fill on every cell (including padding), a bright border, and a
-// full-width underline. Unselected buttons stay quiet slate panels.
 func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 	selected := i == m.cursor || (m.hovered >= 0 && i == m.hovered)
 
-	accent := m.theme.Download
+	accent := m.theme.AccentDL
 	fill := m.theme.MenuSelectDL
-	if it.screen == screenMonitor {
-		accent = m.theme.Upload
+	switch it.screen {
+	case screenMonitor:
+		accent = m.theme.AccentUL
 		fill = m.theme.MenuSelectUL
-	} else if it.screen == screenExit {
-		accent = m.theme.Highlight
+	case screenSettings:
+		accent = m.theme.AccentLat
+		fill = m.theme.MenuSelectSet
+	case screenExit:
+		accent = m.theme.AccentHL
 		fill = m.theme.MenuSelectExit
 	}
 
-	// Surfaces: selected = solid tinted glass; idle = quiet panel.
 	var bg lipgloss.TerminalColor
 	if selected {
 		bg = fill
@@ -368,13 +439,11 @@ func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 		bg = m.theme.MenuIdleFill
 	}
 
-	// Padding is inside the border; content width excludes L/R pad (2+2).
 	innerW := cardWidth - 4
 	if innerW < 12 {
 		innerW = 12
 	}
 
-	// Every text style must carry bg so SGR resets never punch holes.
 	cell := func(fg lipgloss.TerminalColor, bold bool) lipgloss.Style {
 		s := lipgloss.NewStyle().Foreground(fg).Background(bg)
 		if bold {
@@ -383,69 +452,38 @@ func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 		return s
 	}
 	space := lipgloss.NewStyle().Background(bg)
-	// Full-width line: join runs then pad with bg so the fill is continuous.
 	line := func(parts ...string) string {
 		joined := strings.Join(parts, "")
-		return lipgloss.NewStyle().
-			Width(innerW).
-			Background(bg).
-			Inline(true).
-			Render(joined)
+		return lipgloss.NewStyle().Width(innerW).Background(bg).Inline(true).Render(joined)
 	}
 
-	// Title row: hotkey chip + title in a colored block (no emoji).
 	ink := lipgloss.Color("#0a0e14")
 	var chip, titleBlock string
 	if selected {
-		// Solid accent pills on the glass fill.
 		if it.hotkey != "" {
-			chip = lipgloss.NewStyle().
-				Foreground(ink).
-				Background(accent).
-				Bold(true).
-				Padding(0, 1).
-				Render(it.hotkey)
+			chip = lipgloss.NewStyle().Foreground(ink).Background(accent).Bold(true).Padding(0, 1).Render(it.hotkey)
 		}
-		titleBlock = lipgloss.NewStyle().
-			Foreground(ink).
-			Background(accent).
-			Bold(true).
-			Padding(0, 1).
-			Render(it.title)
+		titleBlock = lipgloss.NewStyle().Foreground(ink).Background(accent).Bold(true).Padding(0, 1).Render(it.title)
 	} else {
-		// Soft accent-on-panel chips when idle.
 		if it.hotkey != "" {
-			chip = lipgloss.NewStyle().
-				Foreground(accent).
-				Background(bg).
-				Bold(true).
-				Padding(0, 1).
-				Render(it.hotkey)
+			chip = lipgloss.NewStyle().Foreground(accent).Background(bg).Bold(true).Padding(0, 1).Render(it.hotkey)
 		}
-		titleBlock = lipgloss.NewStyle().
-			Foreground(accent).
-			Background(bg).
-			Bold(true).
-			Padding(0, 1).
-			Render(it.title)
+		titleBlock = lipgloss.NewStyle().Foreground(accent).Background(bg).Bold(true).Padding(0, 1).Render(it.title)
 	}
 	titleRow := line(chip, space.Render(" "), titleBlock)
 
-	// Subtitle
 	subFG := m.theme.Muted
 	if selected {
 		subFG = m.theme.Foreground
 	}
 	subRow := line(space.Render("  "), cell(subFG, false).Render(it.subtitle))
 
-	// Divider
 	divCh := "─"
 	if selected {
 		divCh = "━"
 	}
-	div := line(cell(accent, false).Render(strings.Repeat(divCh, min(innerW, 18))))
+	div := line(cell(accent, false).Render(strings.Repeat(divCh, min(innerW, 20))))
 
-	// Features (always 3 slots for equal height)
 	featRows := make([]string, 3)
 	for j := 0; j < 3; j++ {
 		if j < len(it.features) {
@@ -453,33 +491,19 @@ func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 			if !selected {
 				bullet = cell(m.theme.Border, false).Render("· ")
 			}
-			featRows[j] = line(
-				space.Render(" "),
-				bullet,
-				cell(m.theme.Muted, false).Render(it.features[j]),
-			)
+			featRows[j] = line(space.Render(" "), bullet, cell(m.theme.Muted, false).Render(it.features[j]))
 		} else {
 			featRows[j] = line("")
 		}
 	}
 
-	// Badge / footer row
 	var badgeRow string
 	if it.badge != "" {
 		var badge string
 		if selected {
-			badge = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#0a0e14")).
-				Background(accent).
-				Bold(true).
-				Padding(0, 1).
-				Render(it.badge)
+			badge = lipgloss.NewStyle().Foreground(ink).Background(accent).Bold(true).Padding(0, 1).Render(it.badge)
 		} else {
-			badge = lipgloss.NewStyle().
-				Foreground(accent).
-				Background(bg).
-				Bold(true).
-				Render(" " + it.badge + " ")
+			badge = lipgloss.NewStyle().Foreground(accent).Background(bg).Bold(true).Render(" " + it.badge + " ")
 		}
 		badgeRow = line(space.Render(" "), badge)
 	} else if selected {
@@ -488,39 +512,42 @@ func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 		badgeRow = line("")
 	}
 
+	topBar := line("")
+	if selected {
+		topBar = line(cell(accent, false).Render(strings.Repeat("▀", innerW)))
+	}
+
 	body := strings.Join([]string{
+		topBar,
 		titleRow,
 		subRow,
-		line(""), // spacer
+		line(""),
 		div,
-		line(""), // spacer
+		line(""),
 		featRows[0],
 		featRows[1],
 		featRows[2],
-		line(""), // spacer
+		line(""),
 		badgeRow,
+		line(""), // keep TUNE / LIVE / etc. inside the selected fill
 	}, "\n")
 
-	borderCol := m.theme.Border
+	var borderCol lipgloss.TerminalColor = m.theme.Border
 	if selected {
 		borderCol = accent
 	}
 
-	cardStyle := lipgloss.NewStyle().
+	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(borderCol).
 		Background(bg).
 		Padding(1, 2).
 		Width(cardWidth).
-		Align(lipgloss.Left)
+		Align(lipgloss.Left).
+		Render(body)
 
-	box := cardStyle.Render(body)
-
-	// Footer bar: full-width accent underline when selected; blank spacer when
-	// not so all three buttons stay the same height.
 	if selected {
 		p := pulseFactor(m.pulse)
-		// Soft pulse on brightness via length, still full-ish width.
 		gw := int(float64(cardWidth) * (0.72 + 0.28*p))
 		if gw < cardWidth/2 {
 			gw = cardWidth / 2
@@ -529,7 +556,6 @@ func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 			gw = cardWidth
 		}
 		bar := lipgloss.NewStyle().Foreground(accent).Bold(true).Render(strings.Repeat("▀", gw))
-		// Center the bar under the card.
 		pad := (cardWidth - gw) / 2
 		if pad < 0 {
 			pad = 0
@@ -542,13 +568,15 @@ func (m *menuModel) renderBox(i int, it menuItem, cardWidth int) string {
 	return box
 }
 
-// pulseFactor returns a nice 0.6–1.0 multiplier for glow length from the 0..1 pulse state.
 func pulseFactor(p float64) float64 {
-	// Simple smooth-ish saw using fractional part
 	frac := p - float64(int(p))
-	// triangle wave between ~0.6 and 1.0
 	if frac < 0.5 {
 		return 0.6 + frac*0.8
 	}
 	return 1.0 - (frac-0.5)*0.8
+}
+
+func (m *menuModel) applyTheme(t apptheme.Theme) {
+	m.theme = t
+	m.spinner.Style = lipgloss.NewStyle().Foreground(t.Highlight)
 }

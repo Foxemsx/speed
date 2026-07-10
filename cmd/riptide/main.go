@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/Foxemsx/riptide/internal/db"
 	"github.com/Foxemsx/riptide/internal/theme"
 	"github.com/Foxemsx/riptide/internal/ui"
 )
@@ -15,15 +17,17 @@ import (
 var version = "dev"
 
 func main() {
+	themeList := strings.Join(theme.Names(), ", ")
 	var (
-		themeFlag   = flag.String("theme", "default", "color theme: default")
+		themeFlag   = flag.String("theme", "", "color theme: "+themeList+" (overrides saved preference)")
 		compactFlag = flag.Bool("compact", false, "skip the large logo, show tagline only")
 		versionFlag = flag.Bool("v", false, "print version and exit")
 	)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of riptide:\n\n")
 		flag.PrintDefaults()
-		fmt.Fprintf(os.Stderr, "\nExamples:\n  riptide\n  riptide --compact\n")
+		fmt.Fprintf(os.Stderr, "\nThemes: %s\n", themeList)
+		fmt.Fprintf(os.Stderr, "\nExamples:\n  riptide\n  riptide --compact\n  riptide --theme ocean\n")
 	}
 	flag.Parse()
 	if *versionFlag {
@@ -31,24 +35,35 @@ func main() {
 		return
 	}
 
-	t := theme.DefaultTheme
-	_ = themeFlag // reserved for future palettes
+	store, err := db.Open()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "riptide: database: %v (continuing without history)\n", err)
+		store = nil
+	}
 
-	// Force dark adaptive colors and paint the host terminal canvas so classic
-	// pure-black consoles match the VS-style #191a1b chrome.
+	themeName := "default"
+	if store != nil {
+		themeName = store.GetSetting("theme", "default")
+	}
+	if *themeFlag != "" {
+		themeName = *themeFlag
+		if store != nil {
+			_ = store.SetSetting("theme", themeName)
+		}
+	}
+	t := theme.Get(themeName)
+
 	lipgloss.SetHasDarkBackground(true)
-	// OSC 11: set default background (Windows Terminal, modern xterm, etc.).
-	fmt.Fprint(os.Stdout, "\x1b]11;#191a1b\a")
-	// OSC 10: default foreground for unstyled text.
-	fmt.Fprint(os.Stdout, "\x1b]10;#e8eaed\a")
+	fmt.Fprint(os.Stdout, "\x1b]11;"+t.HexBG()+"\a")
+	fmt.Fprint(os.Stdout, "\x1b]10;"+t.HexFG()+"\a")
 	defer func() {
-		// Restore terminal default colors on exit (best-effort).
 		fmt.Fprint(os.Stdout, "\x1b]111\a\x1b]110\a")
 	}()
 
-	m := ui.NewApp(t, *compactFlag)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	m := ui.NewApp(t, *compactFlag, store)
+	defer m.Close()
 
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "riptide: %v\n", err)
 		os.Exit(1)

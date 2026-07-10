@@ -2,7 +2,7 @@
 
 **Measure and watch your internet connection — from the terminal.**
 
-A polished Go TUI with a startup menu, one-shot speed tests, and a live bandwidth monitor. Centered cards, smooth graphs, no config required.
+A polished Go TUI with a startup menu, one-shot speed tests, a live bandwidth monitor, themes, and saved test history. Centered cards, smooth graphs, SQLite under the hood.
 
 [![terminal](https://img.shields.io/badge/terminal-TUI-39d0d8?style=flat-square)](https://github.com/Foxemsx/riptide)
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
@@ -20,10 +20,9 @@ A polished Go TUI with a startup menu, one-shot speed tests, and a live bandwidt
 
 | | |
 |:---|:---|
-| **Speed Test** | One-shot download, upload, and ping. Parallel connections, peak rates, timed phases. |
+| **Speed Test** | One-shot download, upload, and ping. Parallel connections, peak rates, timed phases. Auto-saves runs; compare the latest 10. |
 | **Bandwidth Monitor** | Live view of *real* PC traffic (OS counters only — no test load). Peaks, uptime, pause. |
-
-Both modes share the same card UI, accent colors (teal ↓ / amber ↑), and keyboard controls.
+| **Settings** | Searchable settings: 11 color themes, database reset, uninstall instructions. |
 
 ---
 
@@ -35,7 +34,7 @@ Both modes share the same card UI, accent colors (teal ↓ / amber ↑), and key
   <img src="assets/home.png?v=3" alt="Speed test" width="48%">
 </p>
 <p align="center">
-  <sub><b>Main menu</b> · pick Speed Test, Bandwidth, or Exit &nbsp;&nbsp;|&nbsp;&nbsp; <b>Speed Test</b> · live graphs mid-run</sub>
+  <sub><b>Main menu</b> · Speed Test, Bandwidth, Settings, Exit &nbsp;&nbsp;|&nbsp;&nbsp; <b>Speed Test</b> · live graphs mid-run</sub>
 </p>
 
 <p align="center">
@@ -44,7 +43,7 @@ Both modes share the same card UI, accent colors (teal ↓ / amber ↑), and key
   <img src="assets/bandwidth.png?v=3" alt="Bandwidth monitor" width="48%">
 </p>
 <p align="center">
-  <sub><b>Finished</b> · peaks + ping summary &nbsp;&nbsp;|&nbsp;&nbsp; <b>Bandwidth</b> · live DL/UL of your real connection</sub>
+  <sub><b>Finished</b> · peaks + ping + recent history &nbsp;&nbsp;|&nbsp;&nbsp; <b>Bandwidth</b> · live DL/UL of your real connection</sub>
 </p>
 
 <p align="center">
@@ -58,12 +57,16 @@ Both modes share the same card UI, accent colors (teal ↓ / amber ↑), and key
 
 ## Features
 
-- **Startup menu** — card buttons with hotkeys `1` / `2` / `3`, keyboard or mouse
+- **Startup menu** — 2×2 card grid with hotkeys `1`–`4`, keyboard or mouse
+- **Speed history** — auto-saves completed tests; press `s` to name a run; latest 10 shown for comparison
+- **11 themes** — default, ocean, midnight, sunset, forest, rose, nord, dracula, cyber, ember, arctic (Settings or `--theme`)
+- **Settings search** — filter themes & sections; `enter` jumps to the best match
+- **SQLite store** — preferences + test runs in `riptide.db` (user config dir)
 - **High-res graphs** — eighth-block bars, fire gradients, peak spark, age fade
 - **Smooth numbers** — lerped display values instead of hard snaps
 - **Units on the fly** — `c` cycles Mbps · KB/s · MB/s · GB/s
 - **Compact mode** — `t` hides the large logo when space is tight
-- **Clean chrome** — VS-style `#191a1b` canvas, rounded cards, accent chips
+- **Clean chrome** — themed canvas, rounded cards, accent chips
 - **Graceful errors** — no stack traces when the network is down
 
 ---
@@ -86,6 +89,8 @@ Uninstall:
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
 ```
+
+You can also open **Settings → Uninstall** inside the app for the same instructions.
 
 ### Windows
 
@@ -116,22 +121,24 @@ go build -o riptide ./cmd/riptide    # Windows: go build -o riptide.exe ./cmd/ri
 ## Usage
 
 ```sh
-riptide              # main menu → Speed Test or Bandwidth
-riptide --compact    # skip the large logo
+riptide                # main menu
+riptide --compact      # skip the large logo
+riptide --theme ocean  # start with a palette (also saved as preference)
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--compact` | `false` | Tagline only (no large logo) |
-| `--theme` | `default` | Reserved for future palettes |
+| `--theme` | saved / `default` | Color palette (see Themes below) |
 
 ### Controls
 
 | Key | Action |
 |-----|--------|
-| `←` `→` / `j` `k` | Move in the menu |
-| `1` `2` `3` | Jump to a menu option |
+| `←` `→` `↑` `↓` / `h j k l` | Move in the menu |
+| `1` `2` `3` `4` | Jump to Speed Test / Bandwidth / Settings / Exit |
 | `enter` | Select |
+| `s` | **Speed Test** — save / rename the current run |
 | `c` | Cycle units |
 | `r` | Restart test / monitor |
 | `p` | Pause / resume (**Bandwidth** only) |
@@ -139,6 +146,75 @@ riptide --compact    # skip the large logo
 | `?` | Help overlay |
 | `esc` / `m` | Back to main menu |
 | `q` / `ctrl+c` | Quit |
+
+### Settings
+
+| Key | Action |
+|-----|--------|
+| type | Filter themes & sections live |
+| `enter` | Jump to best match (or apply a matched theme) |
+| `tab` | Next section |
+| `←` `→` / `j` `k` | Browse themes |
+| `enter` on theme | Apply & save theme |
+| `enter` on Reset | Confirm wipe of saved runs |
+
+---
+
+## Themes
+
+| Name | Vibe |
+|------|------|
+| `default` | Teal & amber on charcoal |
+| `ocean` | Deep sea · cyan foam |
+| `midnight` | Electric blue · violet night |
+| `sunset` | Coral dusk · warm gold |
+| `forest` | Moss · gold canopy |
+| `rose` | Blush · soft magenta |
+| `nord` | Frost · polar aurora |
+| `dracula` | Purple night · neon pink |
+| `cyber` | Neon green · hot magenta |
+| `ember` | Charcoal fire · molten gold |
+| `arctic` | Ice blue · clean slate |
+
+Theme preference is stored in the local database (overridden by `--theme` for that launch).
+
+---
+
+## Data & history
+
+Speed tests are stored in **SQLite** as `riptide.db`:
+
+| OS | Location |
+|----|----------|
+| Linux / macOS | `~/.config/riptide/riptide.db` |
+| Windows | `%AppData%\riptide\riptide.db` |
+
+- Completed speed tests **auto-save** with a timestamped name
+- Press **`s`** during/after a speed test to save with a custom name
+- The **Recent tests** block (latest 10) lives on the Speed Test screen only
+- **Settings → Reset database** clears all saved runs (keeps theme); with confirmation
+
+---
+
+## Uninstall
+
+**Linux / WSL**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
+```
+
+**Manual**
+
+```sh
+# Linux / macOS
+rm -f "$(command -v riptide)"
+
+# Windows (go install)
+del %USERPROFILE%\go\bin\riptide.exe
+```
+
+Uninstall removes the binary only — not Go, not your PATH entries, and not `riptide.db`. To wipe history first, use **Settings → Reset database**.
 
 ---
 
