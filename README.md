@@ -47,6 +47,15 @@ A polished Go TUI with a startup menu, one-shot speed tests, a live bandwidth mo
 </p>
 
 <p align="center">
+  <img src="assets/settings.png?v=3" alt="Settings screen" width="48%">
+  &nbsp;
+  <img src="assets/save.png?v=3" alt="Save prompt" width="48%">
+</p>
+<p align="center">
+  <sub><b>Settings</b> · theme picker, reset DB, uninstall &nbsp;&nbsp;|&nbsp;&nbsp; <b>Save</b> · name a run after the test</sub>
+</p>
+
+<p align="center">
   <img src="assets/helpmenu.png?v=3" alt="Help overlay" width="42%">
 </p>
 <p align="center">
