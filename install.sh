@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
-# riptide — interactive installer
-#
-# Self-contained bootstrap + Bubble Tea TUI. No prebuilt releases needed:
-#   1. bash detects (or downloads) the Go toolchain into ~/.local/go
-#   2. bash writes the embedded Go TUI source to a temp dir and builds it
-#   3. the TUI takes over: shows a status card, runs the install steps with a
-#      live spinner + log, then a completion summary card.
-#
-# Usage:
+# riptide installer. Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/install.sh | sh
 #   bash install.sh
 
-# Re-exec under bash if invoked under a different shell (curl | sh should be fine).
+# Re-exec under bash. `curl | sh` sets $0 to the sh binary itself, so re-exec
+# bash on the script's stdin (copied to a temp file) instead of on $0.
 if [ -z "${BASH_VERSION:-}" ]; then
-  exec bash "$0" "$@"
+  if [ -f "$0" ] && [ -t 0 ]; then
+    exec bash "$0" "$@"
+  else
+    _riptide_reexec="$(mktemp "${TMPDIR:-/tmp}/riptide-install.XXXXXX.sh")"
+    cat > "$_riptide_reexec"
+    export _riptide_reexec
+    exec bash "$_riptide_reexec" "$@"
+  fi
 fi
 
 set -o pipefail
 
-# ---------------------------------------------------------------------------
-# Setup
-# ---------------------------------------------------------------------------
 TMP="$(mktemp -d)"
 INSTDIR="$TMP/riptide-installer"
 LOGFILE="$TMP/install.log"
@@ -44,9 +41,6 @@ need_cmd() {
 need_cmd curl
 need_cmd tar
 
-# ---------------------------------------------------------------------------
-# Detect platform
-# ---------------------------------------------------------------------------
 detect_platform() {
   local os arch
   case "$(uname -s)" in
@@ -68,22 +62,39 @@ OS_LC="${PLATFORM%% *}"
 ARCH="${PLATFORM##* }"
 SHELL_NAME="$(basename "${SHELL:-/bin/bash}")"
 
-# ---------------------------------------------------------------------------
-# Go detection
-# ---------------------------------------------------------------------------
+# Pin to the local toolchain so `go` never auto-downloads a newer one over the
+# network (GOTOOLCHAIN auto mode), which fails on restricted networks like WSL.
+export GOTOOLCHAIN=local
+
 GO_CMD=""
 GO_WAS_PRESENT=0
-if [ -x "$HOME/.local/go/bin/go" ]; then
+
+# returns 0 if the go binary $1 reports a version >= 1.23
+go_is_new_enough() {
+  local ver major minor
+  ver="$("$1" version 2>/dev/null | awk '{print $3}')"   # e.g. go1.21.5
+  ver="${ver#go}"
+  # Unparseable (e.g. "devel ...") or missing -> treat as too old so we
+  # install our own known-good toolchain rather than guess.
+  case "$ver" in
+    [0-9]*.[0-9]*) ;;
+    *) return 1 ;;
+  esac
+  major="${ver%%.*}"
+  minor="${ver#*.}"
+  minor="${minor%%.*}"
+  [ "$major" -eq 1 ] && [ "$minor" -ge 23 ]
+}
+
+if [ -x "$HOME/.local/go/bin/go" ] && go_is_new_enough "$HOME/.local/go/bin/go"; then
   GO_CMD="$HOME/.local/go/bin/go"
   GO_WAS_PRESENT=1
-elif command -v go >/dev/null 2>&1; then
+elif command -v go >/dev/null 2>&1 && go_is_new_enough "$(command -v go)"; then
   GO_CMD="go"
   GO_WAS_PRESENT=1
 fi
 
-# ---------------------------------------------------------------------------
-# Install Go locally if missing
-# ---------------------------------------------------------------------------
+# Install Go locally if missing.
 install_go() {
   local gover url
   gover="$(curl -fsSL https://go.dev/VERSION?m=text | head -1)"
@@ -130,9 +141,7 @@ else
   GO_ACTION="already-present"
 fi
 
-# ---------------------------------------------------------------------------
-# PATH setup (for the current shell + the user's shell config)
-# ---------------------------------------------------------------------------
+# PATH setup (current shell + the user's shell config).
 add_path_entry() {
   local entry="$1"
   export PATH="$entry:$PATH"
@@ -160,9 +169,7 @@ add_path_entry "$HOME/go/bin"
 
 PATH_ENTRIES="$HOME/.local/go/bin $HOME/go/bin"
 
-# ---------------------------------------------------------------------------
-# Write the embedded Bubble Tea TUI and build it
-# ---------------------------------------------------------------------------
+# Write the embedded Bubble Tea TUI and build it.
 mkdir -p "$INSTDIR"
 
 cat > "$INSTDIR/go.mod" <<'GOMOD_EOF'
@@ -506,9 +513,7 @@ if ! ( cd "$INSTDIR" && "$GO_CMD" mod tidy >>"$LOGFILE" 2>&1 && "$GO_CMD" build 
   cleanup_and_fail
 fi
 
-# ---------------------------------------------------------------------------
-# Hand off to the TUI
-# ---------------------------------------------------------------------------
+# Hand off to the TUI.
 export RIPTIDE_INSTALL_OS="$OS_LC"
 export RIPTIDE_INSTALL_ARCH="$ARCH"
 export RIPTIDE_INSTALL_GO_VERSION="$GO_VER"

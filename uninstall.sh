@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
-# riptide — interactive uninstaller
-#
-# Self-contained bootstrap + Bubble Tea TUI. Removes the `riptide` binary
-# (and only that — the Go toolchain and your PATH are left untouched).
-#
-# Usage:
+# riptide uninstaller. Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
 #   bash uninstall.sh
 
-# Re-exec under bash if invoked under a different shell (curl | sh should be fine).
+# Re-exec under bash. `curl | sh` sets $0 to the sh binary itself, so re-exec
+# bash on the script's stdin (copied to a temp file) instead of on $0.
 if [ -z "${BASH_VERSION:-}" ]; then
-  exec bash "$0" "$@"
+  if [ -f "$0" ] && [ -t 0 ]; then
+    exec bash "$0" "$@"
+  else
+    _riptide_reexec="$(mktemp "${TMPDIR:-/tmp}/riptide-uninstall.XXXXXX.sh")"
+    cat > "$_riptide_reexec"
+    export _riptide_reexec
+    exec bash "$_riptide_reexec" "$@"
+  fi
 fi
 
 set -o pipefail
@@ -66,9 +69,7 @@ OS_LC="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 SHELL_NAME="$(basename "${SHELL:-/bin/bash}")"
 
-# ---------------------------------------------------------------------------
-# Write the embedded Bubble Tea TUI and build it
-# ---------------------------------------------------------------------------
+# Write the embedded Bubble Tea TUI and build it.
 mkdir -p "$INSTDIR"
 
 cat > "$INSTDIR/go.mod" <<'GOMOD_EOF'
@@ -390,9 +391,7 @@ if ! ( cd "$INSTDIR" && "$GO_CMD" mod tidy >>"$LOGFILE" 2>&1 && "$GO_CMD" build 
   exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Hand off to the TUI
-# ---------------------------------------------------------------------------
+# Hand off to the TUI.
 export RIPTIDE_UNINSTALL_TARGET="$RIPTIDE_BIN"
 
 "$INSTDIR/ui"

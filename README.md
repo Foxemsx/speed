@@ -70,21 +70,37 @@ Both modes share the same card UI, accent colors (teal ↓ / amber ↑), and key
 
 ## Quick start
 
-**Linux** (installer — no sudo):
+### Linux / WSL (installer — no sudo, bash only)
+
+> The `install.sh` script is **Linux-only**. It re-execs under bash and, if no
+> suitable Go toolchain is present, downloads one locally — it never touches
+> your system `go` or needs root.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/install.sh | sh
 riptide
 ```
 
-**Anywhere with Go 1.23+**:
+Uninstall:
 
 ```sh
-go install github.com/Foxemsx/riptide/cmd/riptide@latest
-riptide
+curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
 ```
 
-**From source**:
+### Windows
+
+The bash installer does **not** run on Windows. Pick one of:
+
+- **Prebuilt release** — download `riptide.exe` from the
+  [Releases](https://github.com/Foxemsx/riptide/releases) page and run it.
+- **With Go 1.23+** (no release needed):
+
+  ```sh
+  go install github.com/Foxemsx/riptide/cmd/riptide@latest
+  riptide
+  ```
+
+### From source (any OS with Go 1.23+)
 
 ```sh
 git clone https://github.com/Foxemsx/riptide
@@ -94,12 +110,6 @@ go build -o riptide ./cmd/riptide    # Windows: go build -o riptide.exe ./cmd/ri
 ```
 
 > Put `$(go env GOPATH)/bin` on your `PATH` if `riptide` is not found after `go install`.
-
-Uninstall (Linux):
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh | sh
-```
 
 ---
 
