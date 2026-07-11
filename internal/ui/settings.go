@@ -19,6 +19,7 @@ const (
 	focusThemes
 	focusReset
 	focusUninstall
+	focusTransparent
 )
 
 type settingsModel struct {
@@ -39,6 +40,8 @@ type settingsModel struct {
 	resetCursor  int
 	flash        string
 	flashOK      bool
+
+	transparentBg bool
 
 	dbPath   string
 	runCount int
@@ -77,6 +80,8 @@ func newSettingsModel(theme apptheme.Theme, compact bool, store *db.Store) *sett
 		m.dbPath = store.Path()
 		n, _ := store.CountRuns()
 		m.runCount = n
+		m.transparentBg = store.GetSetting("transparent_bg", "") == "true"
+		apptheme.TransparentBg.Store(m.transparentBg)
 	}
 	m.styleSearch()
 	m.refilter()
@@ -167,6 +172,10 @@ func (m *settingsModel) showUninstall() bool {
 	return tokenMatch(m.query(), "uninstall", "remove", "install", "linux", "windows", "manual")
 }
 
+func (m *settingsModel) showTransparent() bool {
+	return m.query() == "" || tokenMatch(m.query(), "transparent", "terminal", "bg", "background", "glass", "opacity", "trans")
+}
+
 func (m *settingsModel) themeList() []int {
 	q := m.query()
 	if q == "" || tokenMatch(q, "theme", "themes", "color", "palette", "look") {
@@ -220,6 +229,10 @@ func (m *settingsModel) jumpFromSearch() tea.Cmd {
 	}
 	if m.showUninstall() {
 		m.focus = focusUninstall
+		return nil
+	}
+	if m.showTransparent() {
+		m.focus = focusTransparent
 		return nil
 	}
 	m.search.Focus()
@@ -309,6 +322,9 @@ func (m *settingsModel) Update(msg tea.Msg) tea.Cmd {
 					m.confirmReset = true
 					m.resetCursor = 0
 					return nil
+				case focusTransparent:
+					m.toggleTransparent()
+					return nil
 				}
 			case "1":
 				if m.showThemes() {
@@ -323,6 +339,11 @@ func (m *settingsModel) Update(msg tea.Msg) tea.Cmd {
 			case "3":
 				if m.showUninstall() {
 					m.focus = focusUninstall
+				}
+				return nil
+			case "4":
+				if m.showTransparent() {
+					m.focus = focusTransparent
 				}
 				return nil
 			case "/":
@@ -438,6 +459,18 @@ func (m *settingsModel) applyThemeCmd() tea.Cmd {
 	return func() tea.Msg { return themeChangedMsg{name: name} }
 }
 
+func (m *settingsModel) toggleTransparent() {
+	m.transparentBg = !m.transparentBg
+	apptheme.TransparentBg.Store(m.transparentBg)
+	if m.store != nil {
+		if m.transparentBg {
+			_ = m.store.SetSetting("transparent_bg", "true")
+		} else {
+			_ = m.store.SetSetting("transparent_bg", "false")
+		}
+	}
+}
+
 func (m *settingsModel) moveTheme(delta int) {
 	list := m.themeList()
 	if len(list) == 0 {
@@ -464,6 +497,9 @@ func (m *settingsModel) visibleSections() []settingsFocus {
 	}
 	if m.showUninstall() {
 		out = append(out, focusUninstall)
+	}
+	if m.showTransparent() {
+		out = append(out, focusTransparent)
 	}
 	return out
 }
@@ -556,7 +592,7 @@ func (m *settingsModel) View() string {
 	hl := lipgloss.NewStyle().Foreground(m.theme.Highlight).Bold(true)
 	mt := lipgloss.NewStyle().Foreground(m.theme.Muted)
 	hint := lipgloss.JoinHorizontal(lipgloss.Center,
-		hl.Render("1/2/3"), mt.Render(" panels  ·  "),
+		hl.Render("1/2/3/4"), mt.Render(" panels  ·  "),
 		hl.Render("tab"), mt.Render(" next  ·  "),
 		hl.Render("enter"), mt.Render(" apply  ·  "),
 		hl.Render("esc"), mt.Render(" menu"),
@@ -591,6 +627,7 @@ func (m *settingsModel) viewTabs(w int) string {
 		{focusThemes, "Themes", "1", m.theme.AccentDL, m.showThemes()},
 		{focusReset, "Reset DB", "2", m.theme.AccentUL, m.showReset()},
 		{focusUninstall, "Uninstall", "3", m.theme.AccentHL, m.showUninstall()},
+		{focusTransparent, "Terminal BG", "4", m.theme.AccentLat, m.showTransparent()},
 	}
 
 	var chips []string
@@ -639,6 +676,8 @@ func (m *settingsModel) viewActivePanel(w int) string {
 		return m.viewReset(w)
 	case m.focus == focusUninstall && m.showUninstall():
 		return m.viewUninstall(w)
+	case m.focus == focusTransparent && m.showTransparent():
+		return m.viewTransparent(w)
 	case m.focus == focusSearch:
 		// Preview first available panel under search
 		if m.showThemes() {
@@ -894,6 +933,46 @@ func (m *settingsModel) viewUninstall(w int) string {
 		"",
 		muted.Render("Does not touch Go, PATH, or riptide.db."),
 		muted.Render("Clear history first via Reset DB if you want."),
+	}
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(border).
+		Background(bg).
+		Padding(1, 1).
+		Width(w).
+		Render(strings.Join(lines, "\n"))
+}
+
+func (m *settingsModel) viewTransparent(w int) string {
+	var border lipgloss.TerminalColor = m.theme.Border
+	if m.focus == focusTransparent {
+		border = m.theme.AccentLat
+	}
+	bg := m.theme.MenuIdleFill
+	ink := lipgloss.Color("#0a0e14")
+
+	title := lipgloss.NewStyle().
+		Foreground(ink).Background(m.theme.AccentLat).Bold(true).Padding(0, 1).
+		Render("Terminal background")
+
+	state := "OPAQUE  ●"
+	stateColor := m.theme.Highlight
+	if m.transparentBg {
+		state = "TRANSPARENT  ○"
+		stateColor = m.theme.Foreground
+	}
+
+	lines := []string{
+		title,
+		"",
+		lipgloss.NewStyle().Foreground(m.theme.Foreground).Background(bg).Render("Let the terminal background show through."),
+		lipgloss.NewStyle().Foreground(m.theme.Muted).Background(bg).Render("Works with any theme — toggle anytime with enter or space."),
+		lipgloss.NewStyle().Foreground(m.theme.Muted).Background(bg).Render("Theme colours remain but the canvas background is skipped."),
+		"",
+		lipgloss.NewStyle().Foreground(stateColor).Background(bg).Bold(true).Render("  " + state),
+		"",
+		lipgloss.NewStyle().Foreground(m.theme.Muted).Background(bg).Render("enter / space to toggle  ·  saved as preference"),
 	}
 
 	return lipgloss.NewStyle().

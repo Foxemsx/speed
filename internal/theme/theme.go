@@ -3,9 +3,15 @@ package theme
 import (
 	"runtime"
 	"strings"
+	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+// TransparentBg controls whether the terminal canvas background fill is
+// skipped. When true the host terminal's native background (including
+// transparency) shows through. Toggled via Settings → Terminal BG (key 4).
+var TransparentBg atomic.Bool
 
 // Theme holds the reskinnable palette for the whole UI. Text colors use
 // lipgloss.AdaptiveColor so they stay readable on light or dark terminals.
@@ -160,7 +166,8 @@ func PaintScreen(t Theme, width, height int, content string) string {
 	// Wrap every line with AppBg so no cell is left without a background.
 	// runtime.GOOS is a compile-time constant — this branch is eliminated on
 	// Linux/Windows builds with zero binary impact.
-	if runtime.GOOS == "darwin" {
+	// Skipped when the user enables transparent mode via Settings.
+	if runtime.GOOS == "darwin" && !TransparentBg.Load() {
 		lines := strings.Split(content, "\n")
 		for i, line := range lines {
 			lines[i] = lipgloss.NewStyle().Background(t.AppBg).Render(line)
