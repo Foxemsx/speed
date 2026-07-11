@@ -39,6 +39,7 @@ func NewApp(t apptheme.Theme, compact bool, store *db.Store) *App {
 		menu:    newMenuModel(t, compact),
 	}
 	a.reloadHistory()
+	apptheme.TransparentBg.Store(store.GetSetting("transparent_bg", "") == "true")
 	return a
 }
 

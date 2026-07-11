@@ -7,6 +7,7 @@ A polished Go TUI with a startup menu, one-shot speed tests, a live bandwidth mo
 [![terminal](https://img.shields.io/badge/terminal-TUI-39d0d8?style=flat-square)](https://github.com/Foxemsx/riptide)
 [![Go](https://img.shields.io/badge/Go-1.23+-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
 [![Linux](https://img.shields.io/badge/Linux-supported-2ea44f?style=flat-square&logo=linux&logoColor=white)](https://github.com/Foxemsx/riptide)
+[![macOS](https://img.shields.io/badge/macOS-supported-A2AAAD?style=flat-square&logo=apple&logoColor=white)](https://github.com/Foxemsx/riptide)
 [![Windows](https://img.shields.io/badge/Windows-supported-0078D6?style=flat-square&logo=windows&logoColor=white)](https://github.com/Foxemsx/riptide)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
@@ -22,7 +23,7 @@ A polished Go TUI with a startup menu, one-shot speed tests, a live bandwidth mo
 |:---|:---|
 | **Speed Test** | One-shot download, upload, and ping. Parallel connections, peak rates, timed phases. Auto-saves runs; compare the latest 10. |
 | **Bandwidth Monitor** | Live view of *real* PC traffic (OS counters only — no test load). Peaks, uptime, pause. |
-| **Settings** | Searchable settings: 11 color themes, database reset, uninstall instructions. |
+| **Settings** | Searchable settings: 14 color themes, database reset, uninstall instructions. |
 
 ---
 
@@ -100,6 +101,24 @@ curl -fsSL https://raw.githubusercontent.com/Foxemsx/riptide/main/uninstall.sh |
 ```
 
 You can also open **Settings → Uninstall** inside the app for the same instructions.
+
+### macOS
+
+With Go 1.23+ installed:
+
+```sh
+go build -o /usr/local/bin/riptide github.com/Foxemsx/riptide/cmd/riptide@main
+riptide
+```
+
+Or from source (same as the [From source](#from-source-any-os-with-go-123) section below).
+
+> **Known issue — transparent terminals (Ghostty, iTerm2)**  
+> On macOS, some terminal emulators render ~30% of the background as
+> transparent due to a Go/Lipgloss interaction with ANSI reset codes.
+> The core features (speed test, bandwidth monitor, themes, history)
+> all work normally. Use **Settings → Terminal BG** (key `4`) to
+> toggle full transparency mode as a workaround.
 
 ### Windows
 
@@ -184,6 +203,9 @@ riptide --theme ocean  # start with a palette (also saved as preference)
 | `cyber` | Neon green · hot magenta |
 | `ember` | Charcoal fire · molten gold |
 | `arctic` | Ice blue · clean slate |
+| `mono` | True black · arctic white |
+| `signal` | True black · rose red |
+| `ink` | True black · cold blue |
 
 Theme preference is stored in the local database (overridden by `--theme` for that launch).
 

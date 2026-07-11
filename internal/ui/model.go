@@ -354,7 +354,7 @@ func (m *model) View() string {
 	if m.compact {
 		header = renderCompactHeader("Wonder how speedy your internet is?")
 	} else {
-		header = renderHeader("Wonder how speedy your internet is?")
+		header = renderHeader("Wonder how speedy your internet is?", m.theme.LogoStops)
 	}
 
 	var main string

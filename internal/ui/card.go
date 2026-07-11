@@ -475,17 +475,22 @@ var logoSrc = []string{
 	"╚═╝  ╚═╝╚═╝╚═╝        ╚═╝   ╚═╝╚═════╝ ╚══════╝",
 }
 
-// logoStops is a 4-stop vertical water gradient (deep ocean → teal → cyan → ice).
-var logoStops = [4][3]uint8{
-	{0x0e, 0x4d, 0x64}, // deep ocean
-	{0x08, 0x83, 0x95}, // teal
-	{0x14, 0xc4, 0xd4}, // bright cyan
-	{0x9a, 0xf5, 0xf8}, // ice / foam
+// logoGradientFromStops returns the colour at position t in [0,1] for the
+// given 4-stop palette, interpolating linearly between adjacent stops.
+func logoGradientFromStops(t float64, stops [4][3]uint8) (uint8, uint8, uint8) {
+	if t < 0 { t = 0 }
+	if t > 1 { t = 1 }
+	segment := t * 3.0
+	idx := int(segment)
+	if idx >= 3 { idx = 2; segment = 3.0 }
+	u := segment - float64(idx)
+	a, b := stops[idx], stops[idx+1]
+	return lerpU8(a[0], b[0], u), lerpU8(a[1], b[1], u), lerpU8(a[2], b[2], u)
 }
 
-// renderHeader draws the RIPTIDE wordmark the same way flow draws FLOW:
-// pre-baked ANSI Shadow art + per-row 4-stop gradient + muted tagline.
-func renderHeader(tagline string) string {
+// renderHeader draws the RIPTIDE wordmark with a per-theme gradient so the
+// logo palette matches the selected colour scheme.
+func renderHeader(tagline string, stops [4][3]uint8) string {
 	n := len(logoSrc)
 	lines := make([]string, n)
 	for i, line := range logoSrc {
@@ -493,7 +498,7 @@ func renderHeader(tagline string) string {
 		if n > 1 {
 			rowT = float64(i) / float64(n-1)
 		}
-		r, g, b := logoGradient(rowT)
+		r, g, b := logoGradientFromStops(rowT, stops)
 		color := lipgloss.Color(fmt.Sprintf("#%02x%02x%02x", r, g, b))
 		lines[i] = lipgloss.NewStyle().Foreground(color).Bold(true).Render(line)
 	}
@@ -506,26 +511,9 @@ func renderHeader(tagline string) string {
 	return lipgloss.JoinVertical(lipgloss.Center, logo, "", tag)
 }
 
-// logoGradient samples the 4-stop logo palette at position t in [0,1]
-// (top → bottom), same approach as flow's fourStopLogoGradient.
-func logoGradient(t float64) (uint8, uint8, uint8) {
-	if t < 0 {
-		t = 0
-	}
-	if t > 1 {
-		t = 1
-	}
-	segment := t * 3.0
-	idx := int(segment)
-	if idx >= 3 {
-		idx = 2
-		segment = 3.0
-	}
-	u := segment - float64(idx)
-	a, b := logoStops[idx], logoStops[idx+1]
-	return lerpU8(a[0], b[0], u), lerpU8(a[1], b[1], u), lerpU8(a[2], b[2], u)
-}
+// lerpU8 linearly interpolates between two uint8 values.
 
+// lerpU8 linearly interpolates between two uint8 values.
 func lerpU8(a, b uint8, t float64) uint8 {
 	return uint8(float64(a) + (float64(b)-float64(a))*t + 0.5)
 }
