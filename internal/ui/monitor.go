@@ -217,7 +217,7 @@ func (m *monitorModel) View() string {
 	if m.compact {
 		header = renderCompactHeader("Watching your connection in real time")
 	} else {
-		header = renderHeader("Watching your connection in real time")
+		header = renderHeader("Watching your connection in real time", m.theme.LogoStops)
 	}
 	stack := lipgloss.JoinVertical(lipgloss.Center,
 		header,

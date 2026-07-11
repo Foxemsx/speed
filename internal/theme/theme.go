@@ -1,6 +1,7 @@
 package theme
 
 import (
+	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -55,6 +56,9 @@ type Theme struct {
 	AccentUL  lipgloss.Color
 	AccentLat lipgloss.Color
 	AccentHL  lipgloss.Color
+
+	// LogoStops is a 4-stop vertical gradient for the RIPTIDE wordmark.
+	LogoStops [4][3]uint8
 }
 
 // DefaultTheme is a modern dark dashboard palette on a VS-style #191a1b canvas,
@@ -90,6 +94,13 @@ var DefaultTheme = Theme{
 	AccentUL:  lipgloss.Color("#ffb454"),
 	AccentLat: lipgloss.Color("#a371f7"),
 	AccentHL:  lipgloss.Color("#7ee787"),
+
+	LogoStops: [4][3]uint8{
+		{0x0e, 0x4d, 0x64},
+		{0x08, 0x83, 0x95},
+		{0x14, 0xc4, 0xd4},
+		{0x9a, 0xf5, 0xf8},
+	},
 }
 
 // All is every built-in palette, default first.
@@ -105,6 +116,9 @@ var All = []Theme{
 	cyberTheme,
 	emberTheme,
 	arcticTheme,
+	monoTheme,
+	signalTheme,
+	inkTheme,
 }
 
 var byName = func() map[string]Theme {
@@ -140,6 +154,18 @@ func PaintScreen(t Theme, width, height int, content string) string {
 	}
 	if height <= 0 {
 		height = 24
+	}
+	// macOS transparent terminals (Ghostty, iTerm2): ANSI resets embedded in
+	// the content clear the background, exposing the desktop through gaps.
+	// Wrap every line with AppBg so no cell is left without a background.
+	// runtime.GOOS is a compile-time constant — this branch is eliminated on
+	// Linux/Windows builds with zero binary impact.
+	if runtime.GOOS == "darwin" {
+		lines := strings.Split(content, "\n")
+		for i, line := range lines {
+			lines[i] = lipgloss.NewStyle().Background(t.AppBg).Render(line)
+		}
+		content = strings.Join(lines, "\n")
 	}
 	return lipgloss.Place(
 		width, height,
@@ -187,6 +213,13 @@ var oceanTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#152a48"),
 	AccentDL: lipgloss.Color("#38bdf8"), AccentUL: lipgloss.Color("#2dd4bf"),
 	AccentLat: lipgloss.Color("#60a5fa"), AccentHL: lipgloss.Color("#67e8f9"),
+
+	LogoStops: [4][3]uint8{
+		{0x0c, 0x4a, 0x6e},
+		{0x31, 0x77, 0x9c},
+		{0x7d, 0xd3, 0xfc},
+		{0xb1, 0xe4, 0xfd},
+	},
 }
 
 var midnightTheme = Theme{
@@ -207,6 +240,13 @@ var midnightTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#1a1830"),
 	AccentDL: lipgloss.Color("#818cf8"), AccentUL: lipgloss.Color("#c084fc"),
 	AccentLat: lipgloss.Color("#38bdf8"), AccentHL: lipgloss.Color("#a5b4fc"),
+
+	LogoStops: [4][3]uint8{
+		{0x31, 0x2e, 0x81},
+		{0x57, 0x5a, 0xa9},
+		{0xa5, 0xb4, 0xfc},
+		{0xc9, 0xd2, 0xfd},
+	},
 }
 
 var sunsetTheme = Theme{
@@ -227,6 +267,13 @@ var sunsetTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#302018"),
 	AccentDL: lipgloss.Color("#fb923c"), AccentUL: lipgloss.Color("#fb7185"),
 	AccentLat: lipgloss.Color("#fbbf24"), AccentHL: lipgloss.Color("#fdba74"),
+
+	LogoStops: [4][3]uint8{
+		{0x9a, 0x34, 0x12},
+		{0xba, 0x60, 0x32},
+		{0xfd, 0xba, 0x74},
+		{0xfd, 0xd5, 0xab},
+	},
 }
 
 var forestTheme = Theme{
@@ -247,6 +294,13 @@ var forestTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#1a2824"),
 	AccentDL: lipgloss.Color("#4ade80"), AccentUL: lipgloss.Color("#facc15"),
 	AccentLat: lipgloss.Color("#2dd4bf"), AccentHL: lipgloss.Color("#86efac"),
+
+	LogoStops: [4][3]uint8{
+		{0x14, 0x53, 0x2d},
+		{0x39, 0x86, 0x56},
+		{0x86, 0xef, 0xac},
+		{0xb6, 0xf5, 0xcd},
+	},
 }
 
 var roseTheme = Theme{
@@ -267,6 +321,13 @@ var roseTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#2a1830"),
 	AccentDL: lipgloss.Color("#f472b6"), AccentUL: lipgloss.Color("#e879f9"),
 	AccentLat: lipgloss.Color("#c084fc"), AccentHL: lipgloss.Color("#f9a8d4"),
+
+	LogoStops: [4][3]uint8{
+		{0x9d, 0x17, 0x4d},
+		{0xbb, 0x46, 0x79},
+		{0xf9, 0xa8, 0xd4},
+		{0xfb, 0xca, 0xe5},
+	},
 }
 
 var nordTheme = Theme{
@@ -287,6 +348,13 @@ var nordTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#3a4250"),
 	AccentDL: lipgloss.Color("#88c0d0"), AccentUL: lipgloss.Color("#b48ead"),
 	AccentLat: lipgloss.Color("#81a1c1"), AccentHL: lipgloss.Color("#a3be8c"),
+
+	LogoStops: [4][3]uint8{
+		{0x3b, 0x6a, 0x8a},
+		{0x56, 0x85, 0x9a},
+		{0x8f, 0xbc, 0xbb},
+		{0xbb, 0xd6, 0xd6},
+	},
 }
 
 var draculaTheme = Theme{
@@ -307,6 +375,13 @@ var draculaTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#322a48"),
 	AccentDL: lipgloss.Color("#8be9fd"), AccentUL: lipgloss.Color("#ff79c6"),
 	AccentLat: lipgloss.Color("#bd93f9"), AccentHL: lipgloss.Color("#50fa7b"),
+
+	LogoStops: [4][3]uint8{
+		{0x2a, 0x6a, 0x78},
+		{0x4a, 0x93, 0xa3},
+		{0x8b, 0xe9, 0xfd},
+		{0xb9, 0xf1, 0xfd},
+	},
 }
 
 var cyberTheme = Theme{
@@ -327,6 +402,13 @@ var cyberTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#0a1a1e"),
 	AccentDL: lipgloss.Color("#39ff14"), AccentUL: lipgloss.Color("#ff00aa"),
 	AccentLat: lipgloss.Color("#00f0ff"), AccentHL: lipgloss.Color("#b8ff3c"),
+
+	LogoStops: [4][3]uint8{
+		{0x0a, 0x4a, 0x12},
+		{0x19, 0x85, 0x12},
+		{0x39, 0xff, 0x14},
+		{0x88, 0xff, 0x72},
+	},
 }
 
 var emberTheme = Theme{
@@ -347,6 +429,13 @@ var emberTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#2a1810"),
 	AccentDL: lipgloss.Color("#f87171"), AccentUL: lipgloss.Color("#fbbf24"),
 	AccentLat: lipgloss.Color("#fb923c"), AccentHL: lipgloss.Color("#fcd34d"),
+
+	LogoStops: [4][3]uint8{
+		{0x7f, 0x1d, 0x1d},
+		{0xa8, 0x49, 0x49},
+		{0xfc, 0xa5, 0xa5},
+		{0xfd, 0xc9, 0xc9},
+	},
 }
 
 var arcticTheme = Theme{
@@ -367,4 +456,91 @@ var arcticTheme = Theme{
 	MenuSelectSet: lipgloss.Color("#1a2834"),
 	AccentDL: lipgloss.Color("#7dd3fc"), AccentUL: lipgloss.Color("#cbd5e1"),
 	AccentLat: lipgloss.Color("#38bdf8"), AccentHL: lipgloss.Color("#bae6fd"),
+
+	LogoStops: [4][3]uint8{
+		{0x0c, 0x4a, 0x6e},
+		{0x45, 0x7d, 0x9d},
+		{0xba, 0xe6, 0xfd},
+		{0xd5, 0xf0, 0xfd},
+	},
+}
+
+// --- Black-background themes -----------------------------------------------
+
+var monoTheme = Theme{
+	Name: "mono", Display: "Mono", Tagline: "True black · arctic white",
+	AppBg: lipgloss.Color("#000000"),
+	Foreground: lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#f0f0f0"},
+	Muted:      lipgloss.AdaptiveColor{Light: "#666666", Dark: "#999999"},
+	Border:     lipgloss.AdaptiveColor{Light: "#888888", Dark: "#333333"},
+	Download:   lipgloss.AdaptiveColor{Light: "#333333", Dark: "#e0e0e0"},
+	Upload:     lipgloss.AdaptiveColor{Light: "#444444", Dark: "#cccccc"},
+	Latency:    lipgloss.AdaptiveColor{Light: "#555555", Dark: "#bbbbbb"},
+	Highlight:  lipgloss.AdaptiveColor{Light: "#1a1a1a", Dark: "#ffffff"},
+	GraphDownBottom: lipgloss.Color("#1a1a1a"), GraphDownTop: lipgloss.Color("#e0e0e0"),
+	GraphUpBottom:   lipgloss.Color("#222222"), GraphUpTop:    lipgloss.Color("#cccccc"),
+	MenuAccentFill:  lipgloss.AdaptiveColor{Light: "#f0f0f0", Dark: "#111111"},
+	MenuIdleFill: lipgloss.Color("#0a0a0a"), MenuSelectDL: lipgloss.Color("#1a1a1a"),
+	MenuSelectUL: lipgloss.Color("#181818"), MenuSelectExit: lipgloss.Color("#141414"),
+	MenuSelectSet: lipgloss.Color("#1a1a1a"),
+	AccentDL: lipgloss.Color("#e0e0e0"), AccentUL: lipgloss.Color("#cccccc"),
+	AccentLat: lipgloss.Color("#bbbbbb"), AccentHL: lipgloss.Color("#ffffff"),
+	LogoStops: [4][3]uint8{
+		{0x1a, 0x1a, 0x1a},
+		{0x88, 0x88, 0x88},
+		{0xcc, 0xcc, 0xcc},
+		{0xfa, 0xfa, 0xfa},
+	},
+}
+
+var signalTheme = Theme{
+	Name: "signal", Display: "Signal", Tagline: "True black · rose red",
+	AppBg: lipgloss.Color("#000000"),
+	Foreground: lipgloss.AdaptiveColor{Light: "#1a0a0a", Dark: "#fef0f0"},
+	Muted:      lipgloss.AdaptiveColor{Light: "#665050", Dark: "#998888"},
+	Border:     lipgloss.AdaptiveColor{Light: "#886060", Dark: "#331a1a"},
+	Download:   lipgloss.AdaptiveColor{Light: "#cc3333", Dark: "#ff4444"},
+	Upload:     lipgloss.AdaptiveColor{Light: "#aa2233", Dark: "#ff6677"},
+	Latency:    lipgloss.AdaptiveColor{Light: "#cc4444", Dark: "#ff8888"},
+	Highlight:  lipgloss.AdaptiveColor{Light: "#991122", Dark: "#ff5566"},
+	GraphDownBottom: lipgloss.Color("#330a0a"), GraphDownTop: lipgloss.Color("#ff4444"),
+	GraphUpBottom:   lipgloss.Color("#2a0a10"), GraphUpTop:    lipgloss.Color("#ff6677"),
+	MenuAccentFill:  lipgloss.AdaptiveColor{Light: "#fef0f0", Dark: "#110808"},
+	MenuIdleFill: lipgloss.Color("#0a0000"), MenuSelectDL: lipgloss.Color("#1a0808"),
+	MenuSelectUL: lipgloss.Color("#180808"), MenuSelectExit: lipgloss.Color("#140808"),
+	MenuSelectSet: lipgloss.Color("#1a080a"),
+	AccentDL: lipgloss.Color("#ff4444"), AccentUL: lipgloss.Color("#ff6677"),
+	AccentLat: lipgloss.Color("#ff8888"), AccentHL: lipgloss.Color("#ff5566"),
+	LogoStops: [4][3]uint8{
+		{0x33, 0x0a, 0x0a},
+		{0x99, 0x22, 0x33},
+		{0xff, 0x44, 0x44},
+		{0xff, 0xaa, 0xaa},
+	},
+}
+
+var inkTheme = Theme{
+	Name: "ink", Display: "Ink", Tagline: "True black · cold blue",
+	AppBg: lipgloss.Color("#000000"),
+	Foreground: lipgloss.AdaptiveColor{Light: "#0a0a1a", Dark: "#f0f0ff"},
+	Muted:      lipgloss.AdaptiveColor{Light: "#505066", Dark: "#8888aa"},
+	Border:     lipgloss.AdaptiveColor{Light: "#606088", Dark: "#1a1a33"},
+	Download:   lipgloss.AdaptiveColor{Light: "#3355cc", Dark: "#4488ff"},
+	Upload:     lipgloss.AdaptiveColor{Light: "#2244aa", Dark: "#6699ff"},
+	Latency:    lipgloss.AdaptiveColor{Light: "#4466cc", Dark: "#88aaff"},
+	Highlight:  lipgloss.AdaptiveColor{Light: "#112299", Dark: "#5599ff"},
+	GraphDownBottom: lipgloss.Color("#0a0a33"), GraphDownTop: lipgloss.Color("#4488ff"),
+	GraphUpBottom:   lipgloss.Color("#0a102a"), GraphUpTop:    lipgloss.Color("#6699ff"),
+	MenuAccentFill:  lipgloss.AdaptiveColor{Light: "#f0f0ff", Dark: "#080811"},
+	MenuIdleFill: lipgloss.Color("#00000a"), MenuSelectDL: lipgloss.Color("#08081a"),
+	MenuSelectUL: lipgloss.Color("#080818"), MenuSelectExit: lipgloss.Color("#080814"),
+	MenuSelectSet: lipgloss.Color("#0a0a1a"),
+	AccentDL: lipgloss.Color("#4488ff"), AccentUL: lipgloss.Color("#6699ff"),
+	AccentLat: lipgloss.Color("#88aaff"), AccentHL: lipgloss.Color("#5599ff"),
+	LogoStops: [4][3]uint8{
+		{0x0a, 0x0a, 0x33},
+		{0x22, 0x44, 0xaa},
+		{0x44, 0x88, 0xff},
+		{0xaa, 0xcc, 0xff},
+	},
 }

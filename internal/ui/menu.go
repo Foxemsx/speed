@@ -394,7 +394,7 @@ func (m *menuModel) View() string {
 	if m.compact {
 		header = renderCompactHeader("Choose how you'd like to measure your connection")
 	} else {
-		header = renderHeader("Choose how you'd like to measure your connection")
+		header = renderHeader("Choose how you'd like to measure your connection", m.theme.LogoStops)
 	}
 
 	rule := lipgloss.NewStyle().Foreground(m.theme.Border).Render(strings.Repeat("─", 36))
